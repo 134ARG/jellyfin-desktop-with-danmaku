@@ -1,3 +1,9 @@
+// Portions adapted from jellyfin-danmaku:
+// https://github.com/Izumiko/jellyfin-danmaku
+// Copyright (c) 2022 Lee / RyoLee
+// Original code licensed under MIT; see third_party/jellyfin-danmaku/LICENSE.
+// Jellyfin Desktop integration changes are distributed under this project's GPL-2.0 license.
+
 // ==UserScript==
 // @name         Jellyfin danmaku extension
 // @description  Jellyfin弹幕插件
@@ -33,11 +39,16 @@
     // ------ configs start------
     const corsProxy = 'https://ddplay-api.930524.xyz/cors/';
     const apiPrefix = 'https://api.dandanplay.net';
-    let ddplayStatus = JSON.parse(localStorage.getItem('ddplayStatus')) || { isLogin: false, token: '', tokenExpire: 0 };
-    const check_interval = 200;
+    const desktopItemChangedEvent = 'jellyfinDesktopDanmakuItemChanged';
+    const maxCanvasDevicePixelRatio = 1.5;
+    window.__JELLYFIN_DANMAKU_MAX_DPR = maxCanvasDevicePixelRatio;
+    const disableTextStrokeForTest = false;
+    // Dormant send/login support; keep the upstream state line close by for easy restore.
+    // let ddplayStatus = JSON.parse(localStorage.getItem('ddplayStatus')) || { isLogin: false, token: '', tokenExpire: 0 };
+    // const check_interval = 200;
     // 0:当前状态关闭 1:当前状态打开
     let danmaku_icons = ['comments_disabled', 'comment'];
-    const send_icon = 'send';
+    // const send_icon = 'send';
     const spanClass = 'xlargePaperIconButton material-icons ';
     const buttonOptions = {
         class: 'paper-icon-button-light',
@@ -50,15 +61,24 @@
 
     let isNewJellyfin = true;
     let itemId = '';
-    const defaultFontFamily = '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif';
+    let queuedUiInit = false;
+    const debugInfoBuffer = [];
+    const defaultFontFamily = '"Microsoft YaHei", sans-serif';
 
-    // Intercept XMLHttpRequest
+    // Desktop normally reads the active item from mpv play options. Keep this
+    // XHR hook only as a Jellyfin-Web fallback.
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (_, url) {
         this.addEventListener('load', function () {
-            if (url.endsWith('PlaybackInfo')) {
+            if (getDesktopItemId() || typeof url !== 'string' || !url.endsWith('PlaybackInfo')) {
+                return;
+            }
+
+            try {
                 const res = JSON.parse(this.responseText);
-                itemId = res.MediaSources[0].Id;
+                itemId = res.MediaSources?.[0]?.Id || itemId;
+            } catch (_) {
+                itemId = itemId || '';
             }
         });
         originalOpen.apply(this, arguments);
@@ -84,6 +104,10 @@
         },
     };
 
+    /*
+     * Dormant upstream send/login UI. The desktop integration currently keeps
+     * playback-side effects only; uncomment this block with the matching
+     * login/send helpers below if we want to restore sending danmaku.
     const sendDanmakuOpts = {
         title: '发送弹幕',
         id: 'sendDanmaku',
@@ -218,12 +242,13 @@
             }
         },
     };
+     */
 
     // ------ configs end------
     /* eslint-disable */
     /* https://cdn.jsdelivr.net/npm/danmaku/dist/danmaku.min.js */
     // prettier-ignore
-    !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):(t="undefined"!=typeof globalThis?globalThis:t||self).Danmaku=e()}(this,(function(){"use strict";var t=function(){if("undefined"==typeof document)return"transform";for(var t=["oTransform","msTransform","mozTransform","webkitTransform","transform"],e=document.createElement("div").style,i=0;i<t.length;i++)if(t[i]in e)return t[i];return"transform"}();function e(t){var e=document.createElement("div");if(e.style.cssText="position:absolute;","function"==typeof t.render){var i=t.render();if(i instanceof HTMLElement)return e.appendChild(i),e}if(e.textContent=t.text,t.style)for(var n in t.style)e.style[n]=t.style[n];return e}var i={name:"dom",init:function(){var t=document.createElement("div");return t.style.cssText="overflow:hidden;white-space:nowrap;transform:translateZ(0);",t},clear:function(t){for(var e=t.lastChild;e;)t.removeChild(e),e=t.lastChild},resize:function(t,e,i){t.style.width=e+"px",t.style.height=i+"px"},framing:function(){},setup:function(t,i){var n=document.createDocumentFragment(),s=0,r=null;for(s=0;s<i.length;s++)(r=i[s]).node=r.node||e(r),n.appendChild(r.node);for(i.length&&t.appendChild(n),s=0;s<i.length;s++)(r=i[s]).width=r.width||r.node.offsetWidth,r.height=r.height||r.node.offsetHeight},render:function(e,i){i.node.style[t]="translate("+i.x+"px,"+i.y+"px)"},remove:function(t,e){t.removeChild(e.node),this.media||(e.node=null)}},n="undefined"!=typeof window&&window.devicePixelRatio||1,s=Object.create(null);function r(t,e){if("function"==typeof t.render){var i=t.render();if(i instanceof HTMLCanvasElement)return t.width=i.width,t.height=i.height,i}var r=document.createElement("canvas"),h=r.getContext("2d"),o=t.style||{};o.font=o.font||"10px sans-serif",o.textBaseline=o.textBaseline||"bottom";var a=1*o.lineWidth;for(var d in a=a>0&&a!==1/0?Math.ceil(a):1*!!o.strokeStyle,h.font=o.font,t.width=t.width||Math.max(1,Math.ceil(h.measureText(t.text).width)+2*a),t.height=t.height||Math.ceil(function(t,e){if(s[t])return s[t];var i=12,n=t.match(/(\d+(?:\.\d+)?)(px|%|em|rem)(?:\s*\/\s*(\d+(?:\.\d+)?)(px|%|em|rem)?)?/);if(n){var r=1*n[1]||10,h=n[2],o=1*n[3]||1.2,a=n[4];"%"===h&&(r*=e.container/100),"em"===h&&(r*=e.container),"rem"===h&&(r*=e.root),"px"===a&&(i=o),"%"===a&&(i=r*o/100),"em"===a&&(i=r*o),"rem"===a&&(i=e.root*o),void 0===a&&(i=r*o)}return s[t]=i,i}(o.font,e))+2*a,r.width=t.width*n,r.height=t.height*n,h.scale(n,n),o)h[d]=o[d];var u=0;switch(o.textBaseline){case"top":case"hanging":u=a;break;case"middle":u=t.height>>1;break;default:u=t.height-a}return o.strokeStyle&&h.strokeText(t.text,a,u),h.fillText(t.text,a,u),r}function h(t){return 1*window.getComputedStyle(t,null).getPropertyValue("font-size").match(/(.+)px/)[1]}var o={name:"canvas",init:function(t){var e=document.createElement("canvas");return e.context=e.getContext("2d"),e._fontSize={root:h(document.getElementsByTagName("html")[0]),container:h(t)},e},clear:function(t,e){t.context.clearRect(0,0,t.width,t.height);for(var i=0;i<e.length;i++)e[i].canvas=null},resize:function(t,e,i){t.width=e*n,t.height=i*n,t.style.width=e+"px",t.style.height=i+"px"},framing:function(t){t.context.clearRect(0,0,t.width,t.height)},setup:function(t,e){for(var i=0;i<e.length;i++){var n=e[i];n.canvas=r(n,t._fontSize)}},render:function(t,e){t.context.drawImage(e.canvas,e.x*n,e.y*n)},remove:function(t,e){e.canvas=null}},a=function(){if("undefined"!=typeof window){var t=window.requestAnimationFrame||window.mozRequestAnimationFrame||window.webkitRequestAnimationFrame;if(t)return t.bind(window)}return function(t){return setTimeout(t,50/3)}}(),d=function(){if("undefined"!=typeof window){var t=window.cancelAnimationFrame||window.mozCancelAnimationFrame||window.webkitCancelAnimationFrame;if(t)return t.bind(window)}return clearTimeout}();function u(t,e,i){for(var n=0,s=0,r=t.length;s<r-1;)i>=t[n=s+r>>1][e]?s=n:r=n;return t[s]&&i<t[s][e]?s:r}function m(t){return/^(ltr|top|bottom)$/i.test(t)?t.toLowerCase():"rtl"}function c(){var t=9007199254740991;return[{range:0,time:-t,width:t,height:0},{range:t,time:t,width:0,height:0}]}function l(t){t.ltr=c(),t.rtl=c(),t.top=c(),t.bottom=c()}function f(){return void 0!==window.performance&&window.performance.now?window.performance.now():Date.now()}function p(t){var e=this,i=this.media?this.media.currentTime:f()/1e3,n=this.media?this.media.playbackRate:1;function s(t,s){if("top"===s.mode||"bottom"===s.mode)return i-t.time<e._.duration;var r=(e._.width+t.width)*(i-t.time)*n/e._.duration;if(t.width>r)return!0;var h=e._.duration+t.time-i,o=e._.width+s.width,a=e.media?s.time:s._utc,d=o*(i-a)*n/e._.duration,u=e._.width-d;return h>e._.duration*u/(e._.width+s.width)}for(var r=this._.space[t.mode],h=0,o=0,a=1;a<r.length;a++){var d=r[a],u=t.height;if("top"!==t.mode&&"bottom"!==t.mode||(u+=d.height),d.range-d.height-r[h].range>=u){o=a;break}s(d,t)&&(h=a)}var m=r[h].range,c={range:m+t.height,time:this.media?t.time:t._utc,width:t.width,height:t.height};return r.splice(h+1,o-h-1,c),"bottom"===t.mode?this._.height-t.height-m%this._.height:m%(this._.height-t.height)}function g(){if(!this._.visible||!this._.paused)return this;if(this._.paused=!1,this.media)for(var t=0;t<this._.runningList.length;t++){var e=this._.runningList[t];e._utc=f()/1e3-(this.media.currentTime-e.time)}var i=this,n=function(t,e,i,n){return function(s){t(this._.stage);var r=(s||f())/1e3,h=this.media?this.media.currentTime:r,o=this.media?this.media.playbackRate:1,a=null,d=0,u=0;for(u=this._.runningList.length-1;u>=0;u--)a=this._.runningList[u],h-(d=this.media?a.time:a._utc)>this._.duration&&(n(this._.stage,a),this._.runningList.splice(u,1));for(var m=[];this._.position<this.comments.length&&(a=this.comments[this._.position],!((d=this.media?a.time:a._utc)>=h));)h-d>this._.duration||(this.media&&(a._utc=r-(this.media.currentTime-a.time)),m.push(a)),++this._.position;for(e(this._.stage,m),u=0;u<m.length;u++)(a=m[u]).y=p.call(this,a),this._.runningList.push(a);for(u=0;u<this._.runningList.length;u++){a=this._.runningList[u];var c=(this._.width+a.width)*(r-a._utc)*o/this._.duration;"ltr"===a.mode&&(a.x=c-a.width),"rtl"===a.mode&&(a.x=this._.width-c),"top"!==a.mode&&"bottom"!==a.mode||(a.x=this._.width-a.width>>1),i(this._.stage,a)}}}(this._.engine.framing.bind(this),this._.engine.setup.bind(this),this._.engine.render.bind(this),this._.engine.remove.bind(this));return this._.requestID=a((function t(e){n.call(i,e),i._.requestID=a(t)})),this}function _(){return!this._.visible||this._.paused||(this._.paused=!0,d(this._.requestID),this._.requestID=0),this}function v(){if(!this.media)return this;this.clear(),l(this._.space);var t=u(this.comments,"time",this.media.currentTime);return this._.position=Math.max(0,t-1),this}function w(t){t.play=g.bind(this),t.pause=_.bind(this),t.seeking=v.bind(this),this.media.addEventListener("play",t.play),this.media.addEventListener("pause",t.pause),this.media.addEventListener("playing",t.play),this.media.addEventListener("waiting",t.pause),this.media.addEventListener("seeking",t.seeking)}function y(t){this.media.removeEventListener("play",t.play),this.media.removeEventListener("pause",t.pause),this.media.removeEventListener("playing",t.play),this.media.removeEventListener("waiting",t.pause),this.media.removeEventListener("seeking",t.seeking),t.play=null,t.pause=null,t.seeking=null}function x(t){this._={},this.container=t.container||document.createElement("div"),this.media=t.media,this._.visible=!0,this.engine=(t.engine||"DOM").toLowerCase(),this._.engine="canvas"===this.engine?o:i,this._.requestID=0,this._.speed=Math.max(0,t.speed)||144,this._.duration=4,this.comments=t.comments||[],this.comments.sort((function(t,e){return t.time-e.time}));for(var e=0;e<this.comments.length;e++)this.comments[e].mode=m(this.comments[e].mode);return this._.runningList=[],this._.position=0,this._.paused=!0,this.media&&(this._.listener={},w.call(this,this._.listener)),this._.stage=this._.engine.init(this.container),this._.stage.style.cssText+="position:relative;pointer-events:none;",this.resize(),this.container.appendChild(this._.stage),this._.space={},l(this._.space),this.media&&this.media.paused||(v.call(this),g.call(this)),this}function b(){if(!this.container)return this;for(var t in _.call(this),this.clear(),this.container.removeChild(this._.stage),this.media&&y.call(this,this._.listener),this)Object.prototype.hasOwnProperty.call(this,t)&&(this[t]=null);return this}var L=["mode","time","text","render","style"];function T(t){if(!t||"[object Object]"!==Object.prototype.toString.call(t))return this;for(var e={},i=0;i<L.length;i++)void 0!==t[L[i]]&&(e[L[i]]=t[L[i]]);if(e.text=(e.text||"").toString(),e.mode=m(e.mode),e._utc=f()/1e3,this.media){var n=0;void 0===e.time?(e.time=this.media.currentTime,n=this._.position):(n=u(this.comments,"time",e.time))<this._.position&&(this._.position+=1),this.comments.splice(n,0,e)}else this.comments.push(e);return this}function E(){return this._.visible?this:(this._.visible=!0,this.media&&this.media.paused||(v.call(this),g.call(this)),this)}function k(){return this._.visible?(_.call(this),this.clear(),this._.visible=!1,this):this}function C(){return this._.engine.clear(this._.stage,this._.runningList),this._.runningList=[],this}function z(){return this._.width=this.container.offsetWidth,this._.height=this.container.offsetHeight,this._.engine.resize(this._.stage,this._.width,this._.height),this._.duration=this._.width/this._.speed,this}var D={get:function(){return this._.speed},set:function(t){return"number"!=typeof t||isNaN(t)||!isFinite(t)||t<=0?this._.speed:(this._.speed=t,this._.width&&(this._.duration=this._.width/t),t)}};function M(t){t&&x.call(this,t)}return M.prototype.destroy=function(){return b.call(this)},M.prototype.emit=function(t){return T.call(this,t)},M.prototype.show=function(){return E.call(this)},M.prototype.hide=function(){return k.call(this)},M.prototype.clear=function(){return C.call(this)},M.prototype.resize=function(){return z.call(this)},Object.defineProperty(M.prototype,"speed",D),M}));
+    !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):(t="undefined"!=typeof globalThis?globalThis:t||self).Danmaku=e()}(this,(function(){"use strict";var t=function(){if("undefined"==typeof document)return"transform";for(var t=["oTransform","msTransform","mozTransform","webkitTransform","transform"],e=document.createElement("div").style,i=0;i<t.length;i++)if(t[i]in e)return t[i];return"transform"}();function e(t){var e=document.createElement("div");if(e.style.cssText="position:absolute;","function"==typeof t.render){var i=t.render();if(i instanceof HTMLElement)return e.appendChild(i),e}if(e.textContent=t.text,t.style)for(var n in t.style)e.style[n]=t.style[n];return e}var i={name:"dom",init:function(){var t=document.createElement("div");return t.style.cssText="overflow:hidden;white-space:nowrap;transform:translateZ(0);",t},clear:function(t){for(var e=t.lastChild;e;)t.removeChild(e),e=t.lastChild},resize:function(t,e,i){t.style.width=e+"px",t.style.height=i+"px"},framing:function(){},setup:function(t,i){var n=document.createDocumentFragment(),s=0,r=null;for(s=0;s<i.length;s++)(r=i[s]).node=r.node||e(r),n.appendChild(r.node);for(i.length&&t.appendChild(n),s=0;s<i.length;s++)(r=i[s]).width=r.width||r.node.offsetWidth,r.height=r.height||r.node.offsetHeight},render:function(e,i){i.node.style[t]="translate("+i.x+"px,"+i.y+"px)"},remove:function(t,e){t.removeChild(e.node),this.media||(e.node=null)}},n="undefined"!=typeof window?Math.min(window.devicePixelRatio||1,window.__JELLYFIN_DANMAKU_MAX_DPR||window.devicePixelRatio||1):1,s=Object.create(null);function r(t,e){if("function"==typeof t.render){var i=t.render();if(i instanceof HTMLCanvasElement)return t.width=i.width,t.height=i.height,i}var r=document.createElement("canvas"),h=r.getContext("2d"),o=t.style||{};o.font=o.font||"10px sans-serif",o.textBaseline=o.textBaseline||"bottom";var a=1*o.lineWidth;for(var d in a=a>0&&a!==1/0?Math.ceil(a):1*!!o.strokeStyle,h.font=o.font,t.width=t.width||Math.max(1,Math.ceil(h.measureText(t.text).width)+2*a),t.height=t.height||Math.ceil(function(t,e){if(s[t])return s[t];var i=12,n=t.match(/(\d+(?:\.\d+)?)(px|%|em|rem)(?:\s*\/\s*(\d+(?:\.\d+)?)(px|%|em|rem)?)?/);if(n){var r=1*n[1]||10,h=n[2],o=1*n[3]||1.2,a=n[4];"%"===h&&(r*=e.container/100),"em"===h&&(r*=e.container),"rem"===h&&(r*=e.root),"px"===a&&(i=o),"%"===a&&(i=r*o/100),"em"===a&&(i=r*o),"rem"===a&&(i=e.root*o),void 0===a&&(i=r*o)}return s[t]=i,i}(o.font,e))+2*a,r.width=t.width*n,r.height=t.height*n,h.scale(n,n),o)h[d]=o[d];var u=0;switch(o.textBaseline){case"top":case"hanging":u=a;break;case"middle":u=t.height>>1;break;default:u=t.height-a}return o.strokeStyle&&h.strokeText(t.text,a,u),h.fillText(t.text,a,u),r}function h(t){return 1*window.getComputedStyle(t,null).getPropertyValue("font-size").match(/(.+)px/)[1]}var o={name:"canvas",init:function(t){var e=document.createElement("canvas");return e.context=e.getContext("2d"),e._fontSize={root:h(document.getElementsByTagName("html")[0]),container:h(t)},e},clear:function(t,e){t.context.clearRect(0,0,t.width,t.height);for(var i=0;i<e.length;i++)e[i].canvas=null},resize:function(t,e,i){t.width=e*n,t.height=i*n,t.style.width=e+"px",t.style.height=i+"px"},framing:function(t){t.context.clearRect(0,0,t.width,t.height)},setup:function(t,e){for(var i=0;i<e.length;i++){var n=e[i];n.canvas=r(n,t._fontSize)}},render:function(t,e){t.context.drawImage(e.canvas,e.x*n,e.y*n)},remove:function(t,e){e.canvas=null}},a=function(){if("undefined"!=typeof window){var t=window.requestAnimationFrame||window.mozRequestAnimationFrame||window.webkitRequestAnimationFrame;if(t)return t.bind(window)}return function(t){return setTimeout(t,50/3)}}(),d=function(){if("undefined"!=typeof window){var t=window.cancelAnimationFrame||window.mozCancelAnimationFrame||window.webkitCancelAnimationFrame;if(t)return t.bind(window)}return clearTimeout}();function u(t,e,i){for(var n=0,s=0,r=t.length;s<r-1;)i>=t[n=s+r>>1][e]?s=n:r=n;return t[s]&&i<t[s][e]?s:r}function m(t){return/^(ltr|top|bottom)$/i.test(t)?t.toLowerCase():"rtl"}function c(){var t=9007199254740991;return[{range:0,time:-t,width:t,height:0},{range:t,time:t,width:0,height:0}]}function l(t){t.ltr=c(),t.rtl=c(),t.top=c(),t.bottom=c()}function f(){return void 0!==window.performance&&window.performance.now?window.performance.now():Date.now()}function p(t){var e=this,i=this.media?this.media.currentTime:f()/1e3,n=this.media?this.media.playbackRate:1;function s(t,s){if("top"===s.mode||"bottom"===s.mode)return i-t.time<e._.duration;var r=(e._.width+t.width)*(i-t.time)*n/e._.duration;if(t.width>r)return!0;var h=e._.duration+t.time-i,o=e._.width+s.width,a=e.media?s.time:s._utc,d=o*(i-a)*n/e._.duration,u=e._.width-d;return h>e._.duration*u/(e._.width+s.width)}for(var r=this._.space[t.mode],h=0,o=0,a=1;a<r.length;a++){var d=r[a],u=t.height;if("top"!==t.mode&&"bottom"!==t.mode||(u+=d.height),d.range-d.height-r[h].range>=u){o=a;break}s(d,t)&&(h=a)}var m=r[h].range,c={range:m+t.height,time:this.media?t.time:t._utc,width:t.width,height:t.height};return r.splice(h+1,o-h-1,c),"bottom"===t.mode?this._.height-t.height-m%this._.height:m%(this._.height-t.height)}function g(){if(!this._.visible||!this._.paused)return this;if(this._.paused=!1,this.media)for(var t=0;t<this._.runningList.length;t++){var e=this._.runningList[t];e._utc=f()/1e3-(this.media.currentTime-e.time)}var i=this,n=function(t,e,i,n){return function(s){t(this._.stage);var r=(s||f())/1e3,h=this.media?this.media.currentTime:r,o=this.media?this.media.playbackRate:1,a=null,d=0,u=0;for(u=this._.runningList.length-1;u>=0;u--)a=this._.runningList[u],h-(d=this.media?a.time:a._utc)>this._.duration&&(n(this._.stage,a),this._.runningList.splice(u,1));for(var m=[];this._.position<this.comments.length&&(a=this.comments[this._.position],!((d=this.media?a.time:a._utc)>=h));)h-d>this._.duration||(this.media&&(a._utc=r-(this.media.currentTime-a.time)),m.push(a)),++this._.position;for(e(this._.stage,m),u=0;u<m.length;u++)(a=m[u]).y=p.call(this,a),this._.runningList.push(a);for(u=0;u<this._.runningList.length;u++){a=this._.runningList[u];var c=(this._.width+a.width)*(r-a._utc)*o/this._.duration;"ltr"===a.mode&&(a.x=c-a.width),"rtl"===a.mode&&(a.x=this._.width-c),"top"!==a.mode&&"bottom"!==a.mode||(a.x=this._.width-a.width>>1),i(this._.stage,a)}}}(this._.engine.framing.bind(this),this._.engine.setup.bind(this),this._.engine.render.bind(this),this._.engine.remove.bind(this));return this._.requestID=a((function t(e){n.call(i,e),i._.requestID=a(t)})),this}function _(){return!this._.visible||this._.paused||(this._.paused=!0,d(this._.requestID),this._.requestID=0),this}function v(){if(!this.media)return this;this.clear(),l(this._.space);var t=u(this.comments,"time",this.media.currentTime);return this._.position=Math.max(0,t-1),this}function w(t){t.play=g.bind(this),t.pause=_.bind(this),t.seeking=v.bind(this),this.media.addEventListener("play",t.play),this.media.addEventListener("pause",t.pause),this.media.addEventListener("playing",t.play),this.media.addEventListener("waiting",t.pause),this.media.addEventListener("seeking",t.seeking)}function y(t){this.media.removeEventListener("play",t.play),this.media.removeEventListener("pause",t.pause),this.media.removeEventListener("playing",t.play),this.media.removeEventListener("waiting",t.pause),this.media.removeEventListener("seeking",t.seeking),t.play=null,t.pause=null,t.seeking=null}function x(t){this._={},this.container=t.container||document.createElement("div"),this.media=t.media,this._.visible=!0,this.engine=(t.engine||"DOM").toLowerCase(),this._.engine="canvas"===this.engine?o:i,this._.requestID=0,this._.speed=Math.max(0,t.speed)||144,this._.duration=4,this.comments=t.comments||[],this.comments.sort((function(t,e){return t.time-e.time}));for(var e=0;e<this.comments.length;e++)this.comments[e].mode=m(this.comments[e].mode);return this._.runningList=[],this._.position=0,this._.paused=!0,this.media&&(this._.listener={},w.call(this,this._.listener)),this._.stage=this._.engine.init(this.container),this._.stage.style.cssText+="position:relative;pointer-events:none;",this.resize(),this.container.appendChild(this._.stage),this._.space={},l(this._.space),this.media&&this.media.paused||(v.call(this),g.call(this)),this}function b(){if(!this.container)return this;for(var t in _.call(this),this.clear(),this.container.removeChild(this._.stage),this.media&&y.call(this,this._.listener),this)Object.prototype.hasOwnProperty.call(this,t)&&(this[t]=null);return this}var L=["mode","time","text","render","style"];function T(t){if(!t||"[object Object]"!==Object.prototype.toString.call(t))return this;for(var e={},i=0;i<L.length;i++)void 0!==t[L[i]]&&(e[L[i]]=t[L[i]]);if(e.text=(e.text||"").toString(),e.mode=m(e.mode),e._utc=f()/1e3,this.media){var n=0;void 0===e.time?(e.time=this.media.currentTime,n=this._.position):(n=u(this.comments,"time",e.time))<this._.position&&(this._.position+=1),this.comments.splice(n,0,e)}else this.comments.push(e);return this}function E(){return this._.visible?this:(this._.visible=!0,this.media&&this.media.paused||(v.call(this),g.call(this)),this)}function k(){return this._.visible?(_.call(this),this.clear(),this._.visible=!1,this):this}function C(){return this._.engine.clear(this._.stage,this._.runningList),this._.runningList=[],this}function z(){return this._.width=this.container.offsetWidth,this._.height=this.container.offsetHeight,this._.engine.resize(this._.stage,this._.width,this._.height),this._.duration=this._.width/this._.speed,this}var D={get:function(){return this._.speed},set:function(t){return"number"!=typeof t||isNaN(t)||!isFinite(t)||t<=0?this._.speed:(this._.speed=t,this._.width&&(this._.duration=this._.width/t),t)}};function M(t){t&&x.call(this,t)}return M.prototype.destroy=function(){return b.call(this)},M.prototype.emit=function(t){return T.call(this,t)},M.prototype.show=function(){return E.call(this)},M.prototype.hide=function(){return k.call(this)},M.prototype.clear=function(){return C.call(this)},M.prototype.resize=function(){return z.call(this)},Object.defineProperty(M.prototype,"speed",D),M}));
     /* eslint-enable */
 
     class EDE {
@@ -242,13 +267,13 @@
             this.opacity = opacityRecord ? parseFloatOfRange(opacityRecord, 0.0, 1.0) : 0.7;
             // 弹幕速度
             const speedRecord = window.localStorage.getItem('danmakuspeed');
-            this.speed = speedRecord ? parseFloatOfRange(speedRecord, 0.0, 1000.0) : 200;
+            this.speed = speedRecord ? parseFloatOfRange(speedRecord, 0.0, 1000.0) : 100;
             // 弹幕字体大小
             const sizeRecord = window.localStorage.getItem('danmakusize');
-            this.fontSize = sizeRecord ? parseFloatOfRange(sizeRecord, 0.0, 50.0) : 18;
+            this.fontSize = sizeRecord ? parseFloatOfRange(sizeRecord, 0.0, 50.0) : 24;
             // 弹幕高度
             const heightRecord = window.localStorage.getItem('danmakuheight');
-            this.heightRatio = heightRecord ? parseFloatOfRange(heightRecord, 0.0, 1.0) : 0.9;
+            this.heightRatio = heightRecord ? parseFloatOfRange(heightRecord, 0.0, 1.0) : 1;
             // 弹幕过滤
             const danmakuFilter = window.localStorage.getItem('danmakuFilter');
             this.danmakuFilter = danmakuFilter ? parseInt(danmakuFilter) : 0;
@@ -271,10 +296,10 @@
             this.curEpOffsetModified = false;
             // 字体
             const fontFamily = window.localStorage.getItem('danmakuFontFamily');
-            this.fontFamily = fontFamily ?? 'sans-serif';
+            this.fontFamily = fontFamily ?? defaultFontFamily;
             // 字体选项
             const fontOptions = window.localStorage.getItem('danmakuFontOptions');
-            this.fontOptions = fontOptions ?? '';
+            this.fontOptions = fontOptions ?? 'bold';
 
             // 自定义CORS代理和API
             this.customCorsProxy = window.localStorage.getItem('customCorsProxy') ?? '';
@@ -282,6 +307,9 @@
 
             this.danmaku = null;
             this.episode_info = null;
+            this.activeItemId = null;
+            this.commentCacheKey = null;
+            this.commentCache = null;
             this.obResize = null;
             this.obMutation = null;
             this.loading = false;
@@ -291,6 +319,27 @@
     //判断火狐浏览器
     function isFirefox() {
         return navigator.userAgent.toLowerCase().includes('firefox');
+    }
+
+    function stopShortcutPropagation(event) {
+        event.stopPropagation();
+    }
+
+    function suspendShortcutPropagation(root) {
+        root.querySelectorAll('input, textarea, select, button, summary, [contenteditable="true"], [contenteditable=""]').forEach((element) => {
+            ['keydown', 'keypress', 'keyup'].forEach((eventName) => {
+                element.addEventListener(eventName, stopShortcutPropagation, true);
+            });
+        });
+    }
+
+    function getSelectOrCheckedValue(selectId, radioName) {
+        const select = document.getElementById(selectId);
+        if (select) {
+            return parseInt(select.value, 10);
+        }
+
+        return parseInt(document.querySelector(`input[name="${radioName}"]:checked`).value, 10);
     }
 
     // 切换弹幕显示
@@ -310,6 +359,14 @@
     // 保存设置
     function saveSettings() {
         try {
+            const reloadSettings = {
+                chConvert: window.ede.chConvert,
+                danmakuFilter: window.ede.danmakuFilter,
+                useXmlDanmaku: window.ede.useXmlDanmaku,
+                customCorsProxy: window.ede.customCorsProxy,
+                customApiPrefix: window.ede.customApiPrefix,
+            };
+
             window.ede.opacity = parseFloatOfRange(document.getElementById('opacity').value, 0, 1);
             window.localStorage.setItem('danmakuopacity', window.ede.opacity.toString());
             showDebugInfo(`设置弹幕透明度：${window.ede.opacity}`);
@@ -337,13 +394,13 @@
             window.ede.danmakuDensityLimit = parseInt(document.getElementById('danmakuDensityLimit').value);
             window.localStorage.setItem('danmakuDensityLimit', window.ede.danmakuDensityLimit);
             showDebugInfo(`设置弹幕密度限制等级：${window.ede.danmakuDensityLimit}`);
-            window.ede.useAnitOverlap = parseInt(document.querySelector('input[name="useAnitOverlap"]:checked').value);
+            window.ede.useAnitOverlap = getSelectOrCheckedValue('useAnitOverlap', 'useAnitOverlap');
             window.localStorage.setItem('useAnitOverlap', window.ede.useAnitOverlap);
             showDebugInfo(`是否使用弹幕防重叠：${window.ede.useAnitOverlap}`);
-            window.ede.chConvert = parseInt(document.querySelector('input[name="chConvert"]:checked').value);
+            window.ede.chConvert = getSelectOrCheckedValue('chConvert', 'chConvert');
             window.localStorage.setItem('chConvert', window.ede.chConvert);
             showDebugInfo(`设置简繁转换：${window.ede.chConvert}`);
-            window.ede.useXmlDanmaku = parseInt(document.querySelector('input[name="useXmlDanmaku"]:checked').value);
+            window.ede.useXmlDanmaku = getSelectOrCheckedValue('useXmlDanmaku', 'useXmlDanmaku');
             window.localStorage.setItem('useXmlDanmaku', window.ede.useXmlDanmaku);
             showDebugInfo(`是否使用本地xml弹幕：${window.ede.useXmlDanmaku}`);
             const epOffset = parseFloat(document.getElementById('danmakuOffsetTime').value);
@@ -352,7 +409,7 @@
                 window.ede.curEpOffset = epOffset;
                 showDebugInfo(`设置弹幕偏移时间：${window.ede.curEpOffset}`);
             }
-            window.ede.fontFamily = document.getElementById('danmakuFontFamily').value || 'sans-serif';
+            window.ede.fontFamily = document.getElementById('danmakuFontFamily').value || defaultFontFamily;
             window.localStorage.setItem('danmakuFontFamily', window.ede.fontFamily);
             showDebugInfo(`字体：${window.ede.fontFamily}`);
             window.ede.fontOptions = document.getElementById('danmakuFontOptions').value;
@@ -366,7 +423,16 @@
             window.localStorage.setItem('customApiPrefix', window.ede.customApiPrefix);
             showDebugInfo(`自定义API：${window.ede.customApiPrefix}`);
 
-            reloadDanmaku('reload');
+            const needsRefetch =
+                reloadSettings.chConvert !== window.ede.chConvert ||
+                reloadSettings.danmakuFilter !== window.ede.danmakuFilter ||
+                reloadSettings.useXmlDanmaku !== window.ede.useXmlDanmaku ||
+                reloadSettings.customCorsProxy !== window.ede.customCorsProxy ||
+                reloadSettings.customApiPrefix !== window.ede.customApiPrefix;
+
+            if (needsRefetch || !rebuildDanmakuFromCache('settings')) {
+                reloadDanmaku('reload');
+            }
             closeDanmakuSidebar();
         } catch (e) {
             alert(`Invalid input: ${e.message}`);
@@ -473,7 +539,7 @@
 
         // 显示侧边栏
         setTimeout(() => {
-            sidebar.style.transform = 'translateX(0)';
+            sidebar.classList.add('open');
         }, 50);
     }
 
@@ -483,7 +549,7 @@
         const backdrop = document.getElementById('danmakuSidebarBackdrop');
         if (!sidebar) return;
 
-        sidebar.style.transform = 'translateX(100%)';
+        sidebar.classList.remove('open');
 
         if (sidebar._handleEscape) {
             document.removeEventListener('keydown', sidebar._handleEscape);
@@ -524,6 +590,7 @@
 
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
+            suspendShortcutPropagation(dialog);
 
             // 添加磨砂玻璃效果层
             const glassLayer = document.createElement('div');
@@ -632,6 +699,7 @@
             dialog.appendChild(buttonsContainer);
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
+            suspendShortcutPropagation(dialog);
 
             // 添加磨砂玻璃效果层
             const glassLayer = document.createElement('div');
@@ -679,6 +747,89 @@
             return wrapper;
         }
 
+        const escapeHtml = (value) =>
+            String(value ?? '').replace(/[&<>"']/g, (char) => {
+                const replacements = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;',
+                };
+                return replacements[char];
+            });
+
+        function selectOptionsHtml(options, selectedValue) {
+            const selectedString = String(selectedValue ?? '');
+            const hasSelectedValue = options.some((option) => String(option.value) === selectedString);
+            const normalizedOptions =
+                selectedString && !hasSelectedValue ? [{ value: selectedString, label: `当前：${selectedString}` }, ...options] : options;
+
+            return normalizedOptions
+                .map((option) => {
+                    const value = String(option.value);
+                    const selected = value === selectedString ? ' selected' : '';
+                    return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(option.label)}</option>`;
+                })
+                .join('');
+        }
+
+        function selectSettingHtml(id, label, options, selectedValue) {
+            return htmlToElement(`
+            <label class="settings-flex-auto" for="${id}">${label}:</label>
+            <select id="${id}" class="danmakuSelectInput">
+                ${selectOptionsHtml(options, selectedValue)}
+            </select>
+        `);
+        }
+
+        function multiSelectSettingHtml(id, label, name, options, selectedMask) {
+            const selectedLabels = options
+                .filter((option) => (selectedMask & option.value) === option.value)
+                .map((option) => option.label);
+            const summary = selectedLabels.length > 0 ? selectedLabels.join('、') : '未过滤';
+
+            return htmlToElement(`
+            <label class="settings-flex-auto" for="${id}">${label}:</label>
+            <details class="danmakuMultiSelect" id="${id}">
+                <summary><span class="danmakuMultiSelectValue">${escapeHtml(summary)}</span></summary>
+                <div class="danmakuMultiSelectMenu">
+                    ${options
+                        .map(
+                            (option) => `
+                    <label class="danmakuMultiSelectOption" for="${option.id}">
+                        <input type="checkbox" id="${option.id}" name="${name}" value="${option.value}" data-label="${escapeHtml(option.label)}" ${
+                                (selectedMask & option.value) === option.value ? 'checked' : ''
+                            } />
+                        <span>${escapeHtml(option.label)}</span>
+                    </label>
+                    `
+                        )
+                        .join('')}
+                </div>
+            </details>
+        `);
+        }
+
+        const booleanOptions = [
+            { value: 1, label: '是' },
+            { value: 0, label: '否' },
+        ];
+        const fontFamilyOptions = [
+            { value: defaultFontFamily, label: '微软雅黑 / YaHei' },
+            { value: '"PingFang SC", sans-serif', label: '苹方 / PingFang SC' },
+            { value: '"Noto Sans CJK SC", sans-serif', label: 'Noto Sans CJK SC' },
+            { value: 'sans-serif', label: '系统 sans-serif' },
+            { value: 'serif', label: 'Serif' },
+            { value: 'monospace', label: 'Monospace' },
+        ];
+        const fontStyleOptions = [
+            { value: '', label: '常规' },
+            { value: 'bold', label: '粗体' },
+            { value: 'italic', label: '斜体' },
+            { value: 'bold italic', label: '粗斜体' },
+        ];
+
         const categories = {
             controls: [],
             display: [
@@ -686,29 +837,18 @@
             <span id="lbdanmakuDensityLimit" class="settings-flex-auto">密度限制等级:</span>
             <input type="range" id="danmakuDensityLimit"  min="0" max="3" step="1" value="${window.ede.danmakuDensityLimit}" />
         `),
-                htmlToElement(`                            
-            <label class="settings-flex-auto">弹幕防重叠:</label>
-            <div><input type="radio" id="enableAntiOverlap" name="useAnitOverlap" value="1" ${window.ede.useAnitOverlap === 1 ? 'checked' : ''}>
-                <label for="enableAntiOverlap">是</label></div>
-            <div><input type="radio" id="disableAntiOverlap" name="useAnitOverlap" value="0" ${window.ede.useAnitOverlap === 0 ? 'checked' : ''}>
-                <label for="disableAntiOverlap">否</label></div>
-        `),
-                htmlToElement(`
-            <label class="settings-flex-auto">简繁转换:</label>
-            <div><input type="radio" id="chConvert0" name="chConvert" value="0" ${window.ede.chConvert === 0 ? 'checked' : ''}>
-                <label for="chConvert0">不转换</label></div>
-            <div><input type="radio" id="chConvert1" name="chConvert" value="1" ${window.ede.chConvert === 1 ? 'checked' : ''}>
-                <label for="chConvert1">简体</label></div>
-            <div><input type="radio" id="chConvert2" name="chConvert" value="2" ${window.ede.chConvert === 2 ? 'checked' : ''}>
-                <label for="chConvert2">繁体</label></div>
-        `),
-                htmlToElement(`
-            <label class="settings-flex-auto">使用本地xml弹幕:</label>
-            <div><input type="radio" id="enableXmlDanmaku" name="useXmlDanmaku" value="1" ${window.ede.useXmlDanmaku === 1 ? 'checked' : ''}>
-                <label for="chConvert0">是</label></div>
-            <div><input type="radio" id="disableXmlDanmaku" name="useXmlDanmaku" value="0" ${window.ede.useXmlDanmaku === 0 ? 'checked' : ''}>
-                <label for="chConvert1">否</label></div>
-        `),
+                selectSettingHtml('useAnitOverlap', '弹幕防重叠', booleanOptions, window.ede.useAnitOverlap),
+                selectSettingHtml(
+                    'chConvert',
+                    '简繁转换',
+                    [
+                        { value: 0, label: '不转换' },
+                        { value: 1, label: '简体' },
+                        { value: 2, label: '繁体' },
+                    ],
+                    window.ede.chConvert
+                ),
+                selectSettingHtml('useXmlDanmaku', '使用本地xml弹幕', booleanOptions, window.ede.useXmlDanmaku),
                 htmlToElement(`
             <label class="settings-flex-auto">当前弹幕偏移时间:</label>
             <div><input class="settings-flex-grow" id="danmakuOffsetTime" placeholder="秒" value="${window.ede.curEpOffset || 0}" /></div>
@@ -717,52 +857,47 @@
             style: [
                 htmlToElement(`
             <span id="lbopacity" class="settings-flex-auto">透明度:</span>
-            <input type="range" id="opacity" min="0" max="1" step="0.1" value="${window.ede.opacity || 0.7}" />
+            <input type="range" id="opacity" min="0" max="1" step="0.1" value="${window.ede.opacity ?? 0.7}" />
         `),
                 htmlToElement(`
             <span id="lbspeed" class="settings-flex-auto">弹幕速度:</span>
-            <input type="range" id="speed" min="20" max="600" step="10" value="${window.ede.speed || 200}" />
+            <input type="range" id="speed" min="20" max="600" step="10" value="${window.ede.speed ?? 100}" />
         `),
-                htmlToElement(`
-            <label class="settings-flex-auto">字体:</label>
-            <div><input class="settings-flex-grow" id="danmakuFontFamily" placeholder="sans-serif" value="${
-                window.ede.fontFamily?.replaceAll('"', '&quot;') ?? defaultFontFamily
-            }" /></div>
-        `),
+                selectSettingHtml('danmakuFontFamily', '字体', fontFamilyOptions, window.ede.fontFamily || defaultFontFamily),
                 htmlToElement(`
             <span id="lbfontSize" class="settings-flex-auto">字体大小:</span>
-            <input type="range" id="fontSize" min="8" max="80" step="1" value="${window.ede.fontSize || 18}" />
+            <input type="range" id="fontSize" min="8" max="80" step="1" value="${window.ede.fontSize ?? 24}" />
         `),
-                htmlToElement(`
-            <label class="settings-flex-auto">其他字体选项:</label>
-            <div><input class="settings-flex-grow" id="danmakuFontOptions" placeholder="" value="${window.ede.fontOptions?.replaceAll('"', '&quot;') ?? ''}" /></div>
-        `),
+                selectSettingHtml('danmakuFontOptions', '其他字体选项', fontStyleOptions, window.ede.fontOptions || ''),
                 htmlToElement(`
             <span id="lbheightRatio" class="settings-flex-auto">高度比例:</span>
-            <input type="range" id="heightRatio" min="0" max="1" step="0.05" value="${window.ede.heightRatio || 0.9}" />
+            <input type="range" id="heightRatio" min="0" max="1" step="0.05" value="${window.ede.heightRatio ?? 1}" />
         `),
             ],
             filter: [
-                htmlToElement(`
-            <label class="settings-flex-auto">弹幕过滤:</label>
-            <div><input type="checkbox" id="filterBilibili" name="danmakuFilter" value="1" ${(window.ede.danmakuFilter & 1) === 1 ? 'checked' : ''} />
-                <label for="filterBilibili">B站</label></div>
-            <div><input type="checkbox" id="filterGamer" name="danmakuFilter" value="2" ${(window.ede.danmakuFilter & 2) === 2 ? 'checked' : ''} />
-                <label for="filterGamer">巴哈</label></div>
-            <div><input type="checkbox" id="filterDanDanPlay" name="danmakuFilter" value="4" ${(window.ede.danmakuFilter & 4) === 4 ? 'checked' : ''} />
-                <label for="filterDanDanPlay">弹弹</label></div>
-            <div><input type="checkbox" id="filterOthers" name="danmakuFilter" value="8" ${(window.ede.danmakuFilter & 8) === 8 ? 'checked' : ''} />
-                <label for="filterOthers">其他</label></div>
-        `),
-                htmlToElement(`
-            <label class="settings-flex-auto">弹幕类型过滤:</label>
-            <div><input type="checkbox" id="filterBottom" name="danmakuModeFilter" value="1" ${(window.ede.danmakuModeFilter & 1) === 1 ? 'checked' : ''} />
-                <label for="filterBottom">底部</label></div>
-            <div><input type="checkbox" id="filterTop" name="danmakuModeFilter" value="2" ${(window.ede.danmakuModeFilter & 2) === 2 ? 'checked' : ''} />
-                <label for="filterTop">顶部</label></div>
-            <div><input type="checkbox" id="filterRoll" name="danmakuModeFilter" value="4" ${(window.ede.danmakuModeFilter & 4) === 4 ? 'checked' : ''} />
-                <label for="filterRoll">滚动</label></div>
-        `),
+                multiSelectSettingHtml(
+                    'danmakuFilterDropdown',
+                    '弹幕过滤',
+                    'danmakuFilter',
+                    [
+                        { id: 'filterBilibili', value: 1, label: 'B站' },
+                        { id: 'filterGamer', value: 2, label: '巴哈' },
+                        { id: 'filterDanDanPlay', value: 4, label: '弹弹' },
+                        { id: 'filterOthers', value: 8, label: '其他' },
+                    ],
+                    window.ede.danmakuFilter
+                ),
+                multiSelectSettingHtml(
+                    'danmakuModeFilterDropdown',
+                    '弹幕类型过滤',
+                    'danmakuModeFilter',
+                    [
+                        { id: 'filterBottom', value: 1, label: '底部' },
+                        { id: 'filterTop', value: 2, label: '顶部' },
+                        { id: 'filterRoll', value: 4, label: '滚动' },
+                    ],
+                    window.ede.danmakuModeFilter
+                ),
             ],
         };
 
@@ -865,13 +1000,36 @@
                 }
             }
         }
-        
-        document.getElementById('danmakuFontOptions').addEventListener('keydown', (event) => event.stopPropagation(), true);
-        document.getElementById('danmakuFontFamily').addEventListener('keydown', (event) => event.stopPropagation(), true);
-        document.getElementById('danmakuOffsetTime').addEventListener('keydown', (event) => event.stopPropagation(), true);
-        document.getElementById('customCorsProxy').addEventListener('keydown', (event) => event.stopPropagation(), true);
-        document.getElementById('customApiPrefix').addEventListener('keydown', (event) => event.stopPropagation(), true);
-        
+
+        function setupMultiSelectDropdowns(root) {
+            root.querySelectorAll('.danmakuMultiSelect').forEach((details) => {
+                const summaryValue = details.querySelector('.danmakuMultiSelectValue');
+                const checkboxes = Array.from(details.querySelectorAll('input[type="checkbox"]'));
+                const updateSummary = () => {
+                    const labels = checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.dataset.label || checkbox.value);
+                    summaryValue.textContent = labels.length > 0 ? labels.join('、') : '未过滤';
+                };
+
+                checkboxes.forEach((checkbox) => {
+                    checkbox.addEventListener('change', updateSummary);
+                });
+                details.addEventListener('toggle', () => {
+                    if (!details.open) {
+                        return;
+                    }
+                    root.querySelectorAll('.danmakuMultiSelect[open]').forEach((otherDetails) => {
+                        if (otherDetails !== details) {
+                            otherDetails.open = false;
+                        }
+                    });
+                });
+                updateSummary();
+            });
+        }
+
+        setupMultiSelectDropdowns(container);
+        suspendShortcutPropagation(container);
+
         // 初始化显示默认标签内容
         if (activeTabId) {
             showTabContent(activeTabId);
@@ -1033,14 +1191,15 @@
                 if (source) {
                     getCommentsByUrl(source).then((comments) => {
                         if (comments !== null) {
+                            setCommentCache(`manual:${source}`, comments);
                             createDanmaku(comments)
                                 .then(() => {
                                     showDebugInfo('弹幕就位');
 
-                                    // 如果已经登录，把弹幕源提交给弹弹Play
-                                    if (ddplayStatus.isLogin) {
-                                        postRelatedSource(source);
-                                    }
+                                    // Dormant upstream submission support:
+                                    // if (ddplayStatus.isLogin) {
+                                    //     postRelatedSource(source);
+                                    // }
                                 })
                                 .catch((error) => {
                                     console.error(`创建弹幕失败: ${error.message}`);
@@ -1186,6 +1345,9 @@
         return button;
     }
 
+    /*
+     * Upstream polling hook. Desktop now clears/reloads from item-change
+     * events, so this no-op interval target stays commented for easy restore.
     function initListener() {
         let container = document.querySelector(mediaQueryStr);
         // 页面未加载
@@ -1196,6 +1358,7 @@
             return;
         }
     }
+     */
 
     function initUI() {
         // 页面未加载
@@ -1239,6 +1402,10 @@
                 _container = element;
             }
         });
+        if (!_container) {
+            return;
+        }
+
         let span = document.createElement('span');
         span.id = 'debugInfo';
         span.style.position = 'absolute';
@@ -1253,12 +1420,19 @@
         span.style.maxHeight = '50%';
         window.ede.logSwitch == 1 ? (span.style.display = 'block') : (span.style.display = 'none');
         _container.appendChild(span);
+        flushDebugInfoBuffer();
 
         showDebugInfo('UI初始化完成');
-        reloadDanmaku('init');
-        refreshDanDanPlayToken();
+        if (!getDesktopItemId()) {
+            reloadDanmaku('init');
+        }
+        // Dormant upstream send/login support:
+        // refreshDanDanPlayToken();
     }
 
+    /*
+     * Dormant upstream send/login helpers. Kept commented so restoring the
+     * disabled send button only needs this block and sendDanmakuOpts above.
     async function loginDanDanPlay(account, passwd) {
         const loginUrl = getApiPrefix() + '/api/v2/login';
         const params = {
@@ -1389,8 +1563,12 @@
                         style: {
                             font: `${window.ede.fontOptions} ${window.ede.fontSize}px ${window.ede.fontFamily}`,
                             fillStyle: `#${colorStr}`,
-                            strokeStyle: colorStr === '000000' ? '#fff' : '#000',
-                            lineWidth: 2.0,
+                            // Temporary visual test: omit strokeStyle so the
+                            // bundled renderer skips strokeText().
+                            ...(disableTextStrokeForTest ? {} : {
+                                strokeStyle: colorStr === '000000' ? '#fff' : '#000',
+                                lineWidth: 2.0,
+                            }),
                         },
                     };
                     window.ede.danmaku.emit(comment);
@@ -1452,19 +1630,11 @@
             showDebugInfo('发送相关链接失败');
         }
     }
+     */
 
-    async function showDebugInfo(msg) {
-        let span = document.getElementById('debugInfo');
-        while (!span) {
-            await new Promise((resolve) => setTimeout(resolve, 200));
-            span = document.getElementById('debugInfo');
-        }
-        let msgStr = msg;
-        if (typeof msg !== 'string') {
-            msgStr = JSON.stringify(msg);
-        }
-
-        let lastLine = span.innerHTML.slice(span.innerHTML.lastIndexOf('<br>') + 4);
+    function appendDebugLine(span, msgStr) {
+        const lastBreak = span.innerHTML.lastIndexOf('<br>');
+        let lastLine = lastBreak >= 0 ? span.innerHTML.slice(lastBreak + 4) : span.innerHTML;
         let baseLine = lastLine.replace(/ X\d+$/, '');
         if (baseLine === msgStr) {
             let count = 2;
@@ -1472,12 +1642,64 @@
                 count = parseInt(lastLine.match(/ X(\d+)$/)[1]) + 1;
             }
             msgStr = `${msgStr} X${count}`;
-            span.innerHTML = span.innerHTML.slice(0, span.innerHTML.lastIndexOf('<br>') + 4) + msgStr;
+            span.innerHTML = (lastBreak >= 0 ? span.innerHTML.slice(0, lastBreak + 4) : '') + msgStr;
         } else {
             span.innerHTML += span.innerHTML === '' ? msgStr : '<br>' + msgStr;
         }
+    }
+
+    function flushDebugInfoBuffer() {
+        const span = document.getElementById('debugInfo');
+        if (!span) return;
+
+        while (debugInfoBuffer.length > 0) {
+            appendDebugLine(span, debugInfoBuffer.shift());
+        }
+    }
+
+    function showDebugInfo(msg) {
+        let msgStr = msg;
+        if (typeof msg !== 'string') {
+            msgStr = JSON.stringify(msg);
+        }
+
+        const span = document.getElementById('debugInfo');
+        if (span) {
+            appendDebugLine(span, msgStr);
+        } else {
+            debugInfoBuffer.push(msgStr);
+            if (debugInfoBuffer.length > 100) {
+                debugInfoBuffer.shift();
+            }
+        }
 
         console.log(msg);
+    }
+
+    function setCommentCache(cacheKey, comments) {
+        if (!Array.isArray(comments)) return;
+
+        window.ede.commentCacheKey = cacheKey;
+        window.ede.commentCache = comments;
+    }
+
+    function rebuildDanmakuFromCache(reason = 'settings') {
+        if (!window.ede.commentCache) {
+            return false;
+        }
+
+        window.ede.loading = true;
+        createDanmaku(window.ede.commentCache)
+            .then(() => {
+                showDebugInfo(reason === 'settings' ? '使用缓存重绘弹幕' : '弹幕缓存就位');
+            })
+            .catch((error) => {
+                showDebugInfo(`缓存重绘失败: ${error.message}`);
+            })
+            .finally(() => {
+                window.ede.loading = false;
+            });
+        return true;
     }
 
     async function getEmbyItemInfo() {
@@ -1614,7 +1836,8 @@
             window.localStorage.setItem(_id_key, animaInfo.animes[selecAnime_id].animeId);
             window.localStorage.setItem(_name_key, animaInfo.animes[selecAnime_id].animeTitle);
 
-            let episode_lists_str = ep2string(animaInfo.animes[selecAnime_id].episodes);
+            // Upstream debug string; unused by the current select dialog UI.
+            // const episode_lists_str = ep2string(animaInfo.animes[selecAnime_id].episodes);
 
             // 创建剧集选项数组
             const episodeOptions = animaInfo.animes[selecAnime_id].episodes.map((ep) => {
@@ -1778,6 +2001,10 @@
     }
 
     async function createDanmaku(comments) {
+        /*
+         * Upstream DOM-churn reload path. Desktop now reloads from the native
+         * item-change event, which avoids watching player container add/remove
+         * cycles for normal playback.
         if (!window.obVideo) {
             window.obVideo = new MutationObserver((mutationList, _observer) => {
                 for (let mutationRecord of mutationList) {
@@ -1807,6 +2034,7 @@
 
             window.obVideo.observe(document.body, { childList: true });
         }
+         */
 
         if (!comments) {
             showDebugInfo('无弹幕');
@@ -1823,9 +2051,7 @@
         }
 
         const waitForMediaContainer = async () => {
-            while (!document.querySelector(mediaContainerQueryStr)?.children.length) {
-                await new Promise((resolve) => setTimeout(resolve, 200));
-            }
+            await waitForElement(mediaContainerQueryStr, (element) => !element.classList.contains('hide') && element.children.length > 0);
         };
 
         await waitForMediaContainer();
@@ -1894,11 +2120,17 @@
 
         window.ede.danmakuSwitch === 1 ? window.ede.danmaku.show() : window.ede.danmaku.hide();
 
+        let resizeQueued = false;
         const resizeObserverCallback = () => {
-            if (window.ede.danmaku) {
-                showDebugInfo('重设容器大小');
-                window.ede.danmaku.resize();
-            }
+            if (!window.ede.danmaku || resizeQueued) return;
+
+            resizeQueued = true;
+            requestAnimationFrame(() => {
+                resizeQueued = false;
+                if (window.ede.danmaku) {
+                    window.ede.danmaku.resize();
+                }
+            });
         };
 
         if (window.ede.obResize) {
@@ -1908,6 +2140,9 @@
         window.ede.obResize = new ResizeObserver(resizeObserverCallback);
         window.ede.obResize.observe(_container);
 
+        /*
+         * Upstream media-attribute observer. It can schedule reloads on generic
+         * attribute changes; desktop item-change events are a cleaner trigger.
         const mutationObserverCallback = () => {
             if (window.ede.danmaku && document.querySelector(mediaQueryStr)) {
                 showDebugInfo('探测播放媒体变化');
@@ -1923,15 +2158,19 @@
 
         window.ede.obMutation = new MutationObserver(mutationObserverCallback);
         window.ede.obMutation.observe(_media, { attributes: true });
+         */
     }
 
     function displayDanmakuInfo(info) {
         let infoContainer = document.getElementById('danmakuInfoTitle');
         if (!infoContainer) {
+            const skinHeader = document.querySelector('div.skinHeader');
+            if (!skinHeader) return;
+
             infoContainer = document.createElement('div');
             infoContainer.id = 'danmakuInfoTitle';
             infoContainer.className = 'pageTitle';
-            document.querySelector('div.skinHeader').appendChild(infoContainer);
+            skinHeader.appendChild(infoContainer);
         }
         infoContainer.innerText = `弹幕匹配信息：${info.animeTitle} - ${info.episodeTitle}`;
     }
@@ -1956,9 +2195,15 @@
                         resolve(itemId);
                     });
                 })
-                .then((itemId) => getCommentsByPluginApi(itemId))
-                .then((comments) => {
+                .then((jellyfinItemId) =>
+                    getCommentsByPluginApi(jellyfinItemId).then((comments) => ({
+                        jellyfinItemId,
+                        comments,
+                    })),
+                )
+                .then(({ jellyfinItemId, comments }) => {
                     if (comments?.length > 0) {
+                        setCommentCache(`plugin:${jellyfinItemId}`, comments);
                         return createDanmaku(comments)
                             .then(() => {
                                 showDebugInfo('本地弹幕就位');
@@ -1974,7 +2219,7 @@
                     throw new Error('本地弹幕加载失败，尝试在线加载');
                 })
                 .catch((error) => {
-                    showDebugInfo(error.message);
+                    showDebugInfo(error?.message || error);
                     return loadOnlineDanmaku(type);
                 });
         } else {
@@ -1992,9 +2237,11 @@
                         } else {
                             reject(null);
                         }
+                        return;
                     }
                     if (type != 'search' && type != 'reload' && window.ede.danmaku && window.ede.episode_info && window.ede.episode_info.episodeId == info.episodeId) {
                         reject('当前播放视频未变动');
+                        return;
                     } else {
                         window.ede.episode_info = info;
                         displayDanmakuInfo(info);
@@ -2004,11 +2251,12 @@
             })
             .then(
                 (episodeId) =>
-                    getComments(episodeId).then((comments) =>
-                        createDanmaku(comments).then(() => {
+                    getComments(episodeId).then((comments) => {
+                        setCommentCache(`online:${episodeId}`, comments);
+                        return createDanmaku(comments).then(() => {
                             showDebugInfo('弹幕就位');
-                        }),
-                    ),
+                        });
+                    }),
                 (msg) => {
                     if (msg) {
                         showDebugInfo(msg);
@@ -2119,8 +2367,12 @@
                 style: {
                     font: `${fontOptions} ${fontSize}px ${fontFamily}`,
                     fillStyle: `#${color}`,
-                    strokeStyle: color === '000000' ? '#fff' : '#000',
-                    lineWidth: 2.0,
+                    // Temporary visual test: omit strokeStyle so the bundled
+                    // renderer skips strokeText().
+                    ...(disableTextStrokeForTest ? {} : {
+                        strokeStyle: color === '000000' ? '#fff' : '#000',
+                        lineWidth: 0.5,
+                    }),
                 },
             });
         }
@@ -2270,6 +2522,9 @@
         return anime_lists_str;
     }
 
+    /*
+     * Upstream debug helper for the old prompt-based episode picker. The
+     * current select dialog builds option arrays directly.
     function ep2string($obj3) {
         const $animes = $obj3;
         let anime_lists = $animes.map(($single_ep) => {
@@ -2281,11 +2536,27 @@
         }
         return ep_lists_str;
     }
+     */
 
-    const waitForElement = (selector) => {
+    const waitForElement = (selector, predicate = (element) => !!element) => {
         return new Promise((resolve) => {
+            const findMatch = () => {
+                for (const element of document.querySelectorAll(selector)) {
+                    if (predicate(element)) {
+                        return element;
+                    }
+                }
+                return null;
+            };
+
+            const existing = findMatch();
+            if (existing) {
+                resolve(existing);
+                return;
+            }
+
             const observer = new MutationObserver(() => {
-                const element = document.querySelector(selector);
+                const element = findMatch();
                 if (element) {
                     observer.disconnect();
                     resolve(element);
@@ -2313,44 +2584,112 @@
         return 0;
     };
 
+    function scheduleInitUI() {
+        if (queuedUiInit) return;
+
+        queuedUiInit = true;
+        requestAnimationFrame(() => {
+            queuedUiInit = false;
+            initUI();
+        });
+    }
+
+    function cleanupPlaybackState() {
+        window.ede.activeItemId = null;
+        window.ede.episode_info = null;
+        window.ede.commentCacheKey = null;
+        window.ede.commentCache = null;
+        window.ede.loading = false;
+
+        document.getElementById('danmakuInfoTitle')?.remove();
+        document.getElementById('danmakuWrapper')?.remove();
+        const danmakuCtr = document.getElementById('danmakuCtr');
+        if (danmakuCtr) {
+            danmakuCtr.style.opacity = 0.5;
+        }
+
+        if (window.ede.danmaku) {
+            window.ede.danmaku.clear();
+            window.ede.danmaku.destroy();
+            window.ede.danmaku = null;
+        }
+    }
+
+    function handleDesktopItemChanged(event) {
+        const nextItemId = event.detail?.itemId || getDesktopItemId();
+        if (!nextItemId) {
+            cleanupPlaybackState();
+            return;
+        }
+
+        itemId = nextItemId;
+        scheduleInitUI();
+        if (window.ede.activeItemId === nextItemId && window.ede.danmaku) {
+            return;
+        }
+
+        window.ede.activeItemId = nextItemId;
+        window.ede.episode_info = null;
+        window.ede.commentCacheKey = null;
+        window.ede.commentCache = null;
+        document.getElementById('danmakuInfoTitle')?.remove();
+        reloadDanmaku('refresh');
+    }
+
+    function installPlaybackDomObserver() {
+        const observer = new MutationObserver((mutations) => {
+            let shouldInit = false;
+            let removedPlayer = false;
+
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType !== 1) continue;
+                    if (
+                        node.matches?.('.videoPlayerContainer, .btnPause, div[data-type="video-osd"]') ||
+                        node.querySelector?.('.videoPlayerContainer, .btnPause, div[data-type="video-osd"]')
+                    ) {
+                        shouldInit = true;
+                    }
+                }
+
+                for (const node of mutation.removedNodes) {
+                    if (node.nodeType !== 1) continue;
+                    if (node.matches?.('.videoPlayerContainer') || node.querySelector?.('.videoPlayerContainer')) {
+                        removedPlayer = true;
+                    }
+                }
+            }
+
+            if (removedPlayer && !document.querySelector('.videoPlayerContainer')) {
+                cleanupPlaybackState();
+            }
+            if (shouldInit) {
+                scheduleInitUI();
+            }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
     waitForElement('.htmlvideoplayer').then(() => {
         if (!window.ede) {
             window.ede = new EDE();
 
             const materialIcon = document.querySelector('.material-icons');
-            const fontFamily = window.getComputedStyle(materialIcon).fontFamily;
-            if (fontFamily === '"Font Awesome 6 Pro"') {
-                danmaku_icons = ['fa-comment-slash', 'fa-comment'];
-                log_icons = ['fa-toilet-paper-slash', 'fa-toilet-paper'];
-                sendDanmakuOpts.class = 'fa-paper-plane';
+            if (materialIcon) {
+                const fontFamily = window.getComputedStyle(materialIcon).fontFamily;
+                if (fontFamily === '"Font Awesome 6 Pro"') {
+                    danmaku_icons = ['fa-comment-slash', 'fa-comment'];
+                    // log_icons = ['fa-toilet-paper-slash', 'fa-toilet-paper'];
+                    // sendDanmakuOpts.class = 'fa-paper-plane';
+                }
             }
 
-            (async () => {
-                isNewJellyfin = compareVersions(ApiClient?._appVersion, '10.10.0') >= 0;
-                // showDebugInfo(`isNewJellyfin: ${isNewJellyfin}`);
-                if (isNewJellyfin) {
-                    let retry = 0;
-                    while (!itemId && !getDesktopItemId()) {
-                        await new Promise((resolve) => setTimeout(resolve, 200));
-                        retry++;
-                        if (retry > 10) {
-                            throw new Error('获取itemId失败');
-                        }
-                    }
-                } else {
-                    while (!(await ApiClient.getSessions())) {
-                        await new Promise((resolve) => setTimeout(resolve, 200));
-                    }
-                }
-
-                setInterval(() => {
-                    initUI();
-                }, check_interval);
-
-                setInterval(() => {
-                    initListener();
-                }, check_interval);
-            })();
+            isNewJellyfin = compareVersions(ApiClient?._appVersion, '10.10.0') >= 0;
+            installPlaybackDomObserver();
+            window.addEventListener(desktopItemChangedEvent, handleDesktopItemChanged);
+            scheduleInitUI();
+            handleDesktopItemChanged({ detail: { itemId: getDesktopItemId() } });
         }
     });
 
@@ -2364,14 +2703,25 @@
         item.classList.add('settingItem');
 
         // 调整标签和输入控件布局
-        const label = item.querySelector('span, label');
-        const input = item.querySelector('input, div:last-child');
+        const directChildren = Array.from(item.children);
+        const label = directChildren.find((child) => child.matches?.('span, label'));
+        const control = directChildren.find((child) => child.matches?.('input, select, details, div'));
+        const input = control?.matches?.('input, select') ? control : control?.querySelector?.('input, select');
+
+        if (control?.tagName === 'DETAILS' && control.classList.contains('danmakuMultiSelect')) {
+            label?.classList.add('settingLabel');
+            control.classList.add('styledMultiSelect');
+            item.classList.add('settingItemWithDropdown');
+            return;
+        }
 
         if (label && input) {
             // 标签样式
             label.classList.add('settingLabel');
 
-            if (input.tagName === 'INPUT') {
+            if (input.tagName === 'SELECT') {
+                input.classList.add('styledSelectInput');
+            } else if (input.tagName === 'INPUT') {
                 if (input.type === 'range') {
                     // 创建滑块值显示容器
                     const rangeContainer = document.createElement('div');
@@ -2594,959 +2944,604 @@
     // 添加CSS样式
     const style = document.createElement('style');
     style.textContent = `
-        /* 统一滚动条样式 */
+        /* Jellyfin Desktop danmaku settings UI. */
+        :root {
+            --danmaku-jf-bg: #202020;
+            --danmaku-jf-panel: #252525;
+            --danmaku-jf-panel-2: #2d2d2d;
+            --danmaku-jf-border: rgba(255, 255, 255, 0.12);
+            --danmaku-jf-border-strong: rgba(255, 255, 255, 0.2);
+            --danmaku-jf-text: rgba(255, 255, 255, 0.92);
+            --danmaku-jf-muted: rgba(255, 255, 255, 0.62);
+            --danmaku-jf-accent: #00a4dc;
+            --danmaku-jf-focus: rgba(0, 164, 220, 0.28);
+        }
+
+        .danmakuSidebar,
+        .danmakuSidebar *,
+        .dialogOverlay,
+        .dialogOverlay * {
+            box-sizing: border-box !important;
+        }
+
+        .danmakuSidebar {
+            position: fixed !important;
+            top: 0 !important;
+            right: 0 !important;
+            z-index: 1000000 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            width: 420px !important;
+            max-width: min(92vw, 420px) !important;
+            height: 100vh !important;
+            background: var(--danmaku-jf-bg) !important;
+            border-left: 1px solid var(--danmaku-jf-border) !important;
+            border-radius: 0 !important;
+            box-shadow: -2px 0 16px rgba(0, 0, 0, 0.45) !important;
+            color: var(--danmaku-jf-text) !important;
+            transform: translateX(100%) !important;
+            transition: transform 0.18s ease-out !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+        }
+
+        .danmakuSidebar.open {
+            transform: translateX(0) !important;
+        }
+
+        #danmakuSidebarBackdrop {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 999999 !important;
+            background: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        .danmakuSidebarHeader {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 12px !important;
+            min-height: 56px !important;
+            padding: 12px 16px !important;
+            background: #1f1f1f !important;
+            border-bottom: 1px solid var(--danmaku-jf-border) !important;
+            box-sizing: border-box !important;
+            flex-shrink: 0 !important;
+        }
+
+        .danmakuSidebarTitle {
+            margin: 0 !important;
+            color: var(--danmaku-jf-text) !important;
+            font-size: 17px !important;
+            font-weight: 500 !important;
+            letter-spacing: 0 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        .danmakuSidebarButtons {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            flex-shrink: 0 !important;
+        }
+
+        .danmakuSidebarSaveButton,
+        .danmakuSidebarCancelButton,
+        #dialogCancel,
+        #dialogConfirm,
+        .dialogCancelButton,
+        .dialogConfirmButton {
+            min-width: 64px !important;
+            min-height: 36px !important;
+            padding: 0 14px !important;
+            border-radius: 4px !important;
+            border: 1px solid var(--danmaku-jf-border-strong) !important;
+            box-shadow: none !important;
+            transform: none !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            transition: background-color 0.12s ease, border-color 0.12s ease !important;
+        }
+
+        .danmakuSidebarSaveButton,
+        #dialogConfirm,
+        .dialogConfirmButton {
+            background: var(--danmaku-jf-accent) !important;
+            border-color: var(--danmaku-jf-accent) !important;
+            color: #fff !important;
+        }
+
+        .danmakuSidebarSaveButton:hover,
+        #dialogConfirm:hover,
+        .dialogConfirmButton:hover {
+            background: #00b7f2 !important;
+            border-color: #00b7f2 !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        .danmakuSidebarCancelButton,
+        #dialogCancel,
+        .dialogCancelButton {
+            background: transparent !important;
+            color: var(--danmaku-jf-text) !important;
+        }
+
+        .danmakuSidebarCancelButton:hover,
+        #dialogCancel:hover,
+        .dialogCancelButton:hover {
+            background: rgba(255, 255, 255, 0.08) !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        .danmakuSettingsContainer {
+            flex: 1 1 auto !important;
+            width: 100% !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
+            padding: 0 !important;
+            background: var(--danmaku-jf-bg) !important;
+            scrollbar-width: thin !important;
+            scrollbar-color: rgba(255, 255, 255, 0.28) transparent !important;
+            box-sizing: border-box !important;
+        }
+
         .danmakuSidebar .danmakuSettingsContainer::-webkit-scrollbar,
-        .danmakuTabsContainer::-webkit-scrollbar {
-            width: 6px;
-            height: 4px;
+        .danmakuTabsContainer::-webkit-scrollbar,
+        .selectDialogList::-webkit-scrollbar {
+            width: 8px !important;
+            height: 8px !important;
         }
 
         .danmakuSidebar .danmakuSettingsContainer::-webkit-scrollbar-track,
-        .danmakuTabsContainer::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 3px;
+        .danmakuTabsContainer::-webkit-scrollbar-track,
+        .selectDialogList::-webkit-scrollbar-track {
+            background: transparent !important;
+            border-radius: 0 !important;
         }
 
         .danmakuSidebar .danmakuSettingsContainer::-webkit-scrollbar-thumb,
-        .danmakuTabsContainer::-webkit-scrollbar-thumb {
-            background: rgba(0, 164, 220, 1);
-            border-radius: 3px;
+        .danmakuTabsContainer::-webkit-scrollbar-thumb,
+        .selectDialogList::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.24) !important;
+            border-radius: 4px !important;
+            border: 2px solid transparent !important;
+            background-clip: padding-box !important;
         }
 
-        /* 控制卡片悬停效果 */
-        .controlCard {
-            position: relative;
-            overflow: hidden;
+        .danmakuTabsContainer {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 1 !important;
+            display: flex !important;
+            overflow-x: auto !important;
+            gap: 0 !important;
+            margin: 0 !important;
+            padding: 0 12px !important;
+            min-height: 48px !important;
+            align-items: stretch !important;
+            background: #202020 !important;
+            border-bottom: 1px solid var(--danmaku-jf-border) !important;
+            scrollbar-width: none !important;
+            flex-shrink: 0 !important;
+            box-sizing: border-box !important;
+        }
+
+        .danmakuTabsContainer::-webkit-scrollbar {
+            display: none !important;
+        }
+
+        .danmaku-tab-button {
+            padding: 0 12px !important;
+            min-height: 48px !important;
+            flex-shrink: 0 !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            color: var(--danmaku-jf-muted) !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+            white-space: nowrap !important;
+            cursor: pointer !important;
+            box-shadow: none !important;
+            transform: none !important;
+            transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease !important;
+        }
+
+        .danmaku-tab-button.active {
+            background: transparent !important;
+            color: #fff !important;
+            border-bottom-color: var(--danmaku-jf-accent) !important;
+            font-weight: 500 !important;
+        }
+
+        .danmaku-tab-button.inactive {
+            background: transparent !important;
+            border-color: transparent !important;
+        }
+
+        .danmaku-tab-button:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.05) !important;
+            color: var(--danmaku-jf-text) !important;
+            border-color: transparent !important;
+        }
+
+        .danmaku-tab-content {
+            display: none !important;
+            padding: 12px 16px 16px !important;
+            box-sizing: border-box !important;
+        }
+
+        .danmaku-tab-content.active {
+            display: block !important;
+        }
+
+        .danmaku-tab-content.controls {
+            display: none !important;
+            gap: 0 !important;
+            margin: 0 !important;
+            padding: 12px 16px 16px !important;
+        }
+
+        .danmaku-tab-content.controls.active {
+            display: block !important;
+        }
+
+        .settings-html-element {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 12px !important;
+            box-sizing: border-box !important;
+        }
+
+        .settings-flex-auto {
+            flex: 1 1 auto !important;
+        }
+
+        .settings-flex-grow {
+            flex: 1 1 auto !important;
+            width: 100% !important;
+        }
+
+        .settingItem,
+        .controlItem,
+        .controlCard,
+        .customCorsProxyCard,
+        .danmakuSwitchCard,
+        .logSwitchCard,
+        .searchItemCard,
+        .addSourceItemCard,
+        .checkbox-item-parent {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 44px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 12px !important;
+            margin: 0 !important;
+            padding: 12px 0 !important;
+            background: transparent !important;
+            background-image: none !important;
+            border: 0 !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            transform: none !important;
+            transition: background-color 0.12s ease !important;
+            box-sizing: border-box !important;
         }
 
         .controlCard::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.05), rgba(0, 164, 219, 0.05));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            pointer-events: none;
+            display: none !important;
         }
 
-        /* 滑块相关样式 */
+        .settingItem:hover,
+        .controlItem:hover,
+        .controlCard:hover,
+        .checkbox-item-parent:hover {
+            background: rgba(255, 255, 255, 0.04) !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        .settingItemWithDropdown {
+            align-items: flex-start !important;
+        }
+
+        .settingItemWithDropdown > .settingLabel {
+            padding-top: 9px !important;
+        }
+
+        .controlInfo {
+            display: flex !important;
+            align-items: center !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }
+
+        .controlTitle,
+        .settingLabel,
+        .settings-flex-auto,
+        .custom-input-label,
+        .checkbox-item-label {
+            color: var(--danmaku-jf-text) !important;
+            font-size: 13px !important;
+            font-weight: 400 !important;
+            line-height: 1.35 !important;
+            text-align: left !important;
+        }
+
+        .controlDescription {
+            color: var(--danmaku-jf-muted) !important;
+            font-size: 12px !important;
+            font-weight: 400 !important;
+        }
+
+        .searchItemControlAction,
+        .addSourceItemControlAction {
+            padding: 0 !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            color: var(--danmaku-jf-accent) !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+        }
+
         .danmakuSidebar input[type="range"] {
-            -webkit-appearance: none;
-            appearance: none;
-            height: 6px;
-            border-radius: 3px;
-            outline: none;
-            background: rgba(0, 164, 220, 1);
-            cursor: pointer;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            flex: 1 1 auto !important;
+            height: 4px !important;
+            border-radius: 2px !important;
+            background: rgba(255, 255, 255, 0.22) !important;
+            outline: none !important;
+            cursor: pointer !important;
+            box-shadow: none !important;
         }
 
-        .danmakuSidebar input[type="range"]::-webkit-slider-thumb,
+        .danmakuSidebar input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            width: 16px !important;
+            height: 16px !important;
+            border-radius: 50% !important;
+            background: #fff !important;
+            border: 2px solid var(--danmaku-jf-accent) !important;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+            transform: none !important;
+        }
+
         .danmakuSidebar input[type="range"]::-moz-range-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: rgba(0, 164, 220, 1);
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 2px 6px rgba(0, 164, 220, 0.3);
-            transition: all 0.3s ease;
-        }
-
-        .danmakuSidebar input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.1);
-            box-shadow: 0 3px 8px rgba(0, 164, 220, 0.5);
-        }
-
-        /* 滑块值标签和容器 */
-        .danmakuSidebar .range-value-label {
-            color: rgba(0, 164, 220, 1) !important;
-            font-size: 14px !important;
-            font-weight: 600 !important;
-            min-width: 50px !important;
-            text-align: center !important;
-            background: rgba(0, 164, 220, 0.1) !important;
-            padding: 4px 8px !important;
-            border-radius: 6px !important;
-            border: 1px solid rgba(0, 164, 220, 0.3) !important;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            flex-shrink: 0 !important;
-            white-space: nowrap !important;
-        }
-
-        .danmakuSidebar .range-value-label:hover {
-            background: rgba(0, 164, 220, 0.15) !important;
-            border-color: rgba(0, 164, 220, 0.5) !important;
-            transform: scale(1.05) !important;
+            width: 16px !important;
+            height: 16px !important;
+            border-radius: 50% !important;
+            background: #fff !important;
+            border: 2px solid var(--danmaku-jf-accent) !important;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+            transform: none !important;
         }
 
         .danmakuSidebar .range-container {
             display: flex !important;
             align-items: center !important;
-            gap: 12px !important;
-            flex: 2 !important;
+            gap: 10px !important;
+            flex: 1 1 auto !important;
         }
 
-        /* 强制约束复选框和单选框容器宽度 */
-        .danmakuSidebar{
-            position: fixed;
-            top: 0;
-            right: 0;
-            width: 450px;
-            max-width: 90vw;
-            height: 100vh;
-            background: rgba(18, 18, 20, 0.95);
-            z-index: 1000000;
-            display: flex;
-            flex-direction: column;
-            box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
-            transform: translateX(100%);
-            transition: transform 0.3s ease-in-out;
-            overflow: hidden;
-            box-sizing: border-box;
-            border-radius: 20px 0 0 0;
+        .danmakuSidebar .range-value-label {
+            min-width: 44px !important;
+            padding: 2px 6px !important;
+            border: 1px solid var(--danmaku-jf-border) !important;
+            border-radius: 4px !important;
+            background: var(--danmaku-jf-panel-2) !important;
+            color: var(--danmaku-jf-text) !important;
+            font-size: 12px !important;
+            font-weight: 400 !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
 
-        .danmakuSidebarHeader {
-            padding: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            min-height: 60px;
+        input#danmakuFontFamily,
+        input#danmakuOffsetTime,
+        input#danmakuFontOptions,
+        input#dialogInput,
+        .custom-input-field,
+        .styledTextInput,
+        [id*="danmaku"] input[type="text"],
+        [id*="danmaku"] input[type="number"] {
+            min-height: 36px !important;
+            padding: 7px 10px !important;
+            border: 1px solid var(--danmaku-jf-border-strong) !important;
+            border-radius: 4px !important;
+            background: #1b1b1b !important;
+            background-image: none !important;
+            color: var(--danmaku-jf-text) !important;
+            font-size: 13px !important;
+            font-weight: 400 !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
 
-        .danmakuSidebarTitle {
-            color: #fff;
-            margin: 0;
-            font-size: 20px;
-            font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .danmakuSidebarButtons {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .danmakuSidebarSaveButton {
-            background: rgba(0, 164, 220, 1);
-            border: none;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            padding: 10px 20px;
-            border-radius: 8px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-width: 60px;
-        }
-
-        .danmakuSidebarSaveButton:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 164, 220, 0.4);
-        }
-
-        .danmakuSidebarCancelButton {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #fff;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            padding: 10px 20px;
-            border-radius: 8px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-width: 60px;
-        }
-
-        .danmakuSidebarCancelButton:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
-        }
-
-        .danmakuSettingsContainer {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            width: 100%;
-            max-width: 100%;
-            box-sizing: border-box;
-        }
-
-        .dialogOverlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            z-index: 2000000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .inputDialog {
-            background: rgba(20, 20, 25, 0.65);
-            backdrop-filter: blur(25px) saturate(1.5);
-            border-radius: 16px;
-            padding: 24px;
-            width: 400px;
-            max-width: 90vw;
-            box-shadow: 
-                0 16px 40px rgba(0, 0, 0, 0.6),
-                0 8px 20px rgba(0, 0, 0, 0.4),
-                inset 0 1px 0 rgba(255, 255, 255, 0.2),
-                inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .selectDialog {
-            background: rgba(20, 20, 25, 0.65);
-            backdrop-filter: blur(25px) saturate(1.5);
-            border-radius: 16px;
-            padding: 24px;
-            width: 500px;
-            max-width: 90vw;
-            max-height: 80vh;
-            box-shadow: 
-                0 16px 40px rgba(0, 0, 0, 0.6),
-                0 8px 20px rgba(0, 0, 0, 0.4),
-                inset 0 1px 0 rgba(255, 255, 255, 0.2),
-                inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            display: flex;
-            flex-direction: column;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .dialogTitle {
-            color: #fff;
-            margin: 0 0 16px 0;
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .dialogActions {
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-        }
-
-        #dialogCancel,
-        .dialogCancelButton {
-            padding: 10px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        #dialogCancel:hover,
-        .dialogCancelButton:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateY(-1px);
-        }
-
-        #dialogConfirm,
-        .dialogConfirmButton {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            background: rgba(0, 164, 220, 1);
-            color: #fff;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        #dialogConfirm:hover,
-        .dialogConfirmButton:hover {
-            background: rgba(0, 164, 220, 0.8);
-            transform: translateY(-1px);
-        }
-
-        .glassLayer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, 
-                rgba(255, 255, 255, 0.1) 0%,
-                rgba(255, 255, 255, 0.05) 50%,
-                rgba(0, 0, 0, 0.1) 100%
-            );
-            border-radius: 16px;
-            pointer-events: none;
-            z-index: -1;
-        }
-
-        .selectDialogList {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            max-height: 400px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.05);
-            scrollbar-width: thin;
-            scrollbar-color: rgba(0, 164, 220, 0.5) rgba(0, 0, 0, 0.1);
-        }
-
-        .selectDialogList::-webkit-scrollbar {
-            width: 8px;
-        }
-        .selectDialogList::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 4px;
-        }
-        .selectDialogList::-webkit-scrollbar-thumb {
-            background: rgba(0, 164, 220, 0.5);
-            border-radius: 4px;
-        }
-        .selectDialogList::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 164, 220, 0.7);
-        }
-
-        /* 选择对话框选项样式 */
-        .select-dialog-item {
-            padding: 12px 16px !important;
-            color: #fff !important;
-            cursor: pointer !important;
-            transition: all 0.3s !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
-            background: transparent !important;
-        }
-        
-        .select-dialog-item.selected {
-            background: rgba(0, 164, 220, 0.2) !important;
-        }
-        
-        .select-dialog-item:hover:not(.selected) {
-            background: rgba(255, 255, 255, 0.08) !important;
-        }
-
-        /* 弹幕设置相关样式 */
-        .settings-html-element {
-            display: flex !important;
-        }
-        
-        .settings-flex-auto {
-            flex: 1 !important;
-        }
-        
-        .settings-flex-grow {
-            flex-grow: 1 !important;
-        }
-        
-        /* 标签页按钮样式 */
-        .danmaku-tab-button {
-            padding: 10px 18px !important;
-            border: none !important;
-            border-radius: 8px !important;
-            color: white !important;
-            font-size: 14px !important;
-            cursor: pointer !important;
-            white-space: nowrap !important;
-            flex-shrink: 0 !important;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
-        
-        .danmaku-tab-button.inactive {
-            background: rgba(255, 255, 255, 0.08) !important;
-            font-weight: 500 !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        }
-        
-        .danmaku-tab-button.active {
-            background: rgba(0, 164, 220, 1) !important;
-            font-weight: 600 !important;
-            border: 1px solid transparent !important;
-        }
-        
-        .danmaku-tab-button:hover:not(.active) {
-            background: rgba(255, 255, 255, 0.15) !important;
-            border-color: rgba(255, 255, 255, 0.2) !important;
-        }
-        
-        /* 标签页内容样式 */
-        .danmaku-tab-content {
-            padding: 10px 0 !important;
-            display: none !important;
-        }
-        
-        .danmaku-tab-content.active {
-            display: block !important;
-        }
-        
-        .danmaku-tab-content.controls {
-            display: flex !important;
-            flex-wrap: wrap !important;
-            gap: 16px !important;
-            margin-bottom: 20px !important;
-            padding: 0 !important;
-        }
-
-        .danmakuTabsContainer {
-            display: flex;
-            overflow-x: auto;
-            padding: 16px 20px;
-            background: rgba(0, 0, 0, 0.2);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            scrollbar-width: thin;
-            scrollbar-color: rgba(0, 164, 220, 0.5) rgba(0, 0, 0, 0.1);
-            margin: -16px -16px 20px -16px;
-            gap: 4px;
-        }
-
-        .danmakuSwitchCard,
-        .logSwitchCard,
-        .searchItemCard,
-        .addSourceItemCard {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: 64px;
-            flex: 1 1 calc(50% - 8px);
-            min-width: 280px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        .danmakuSwitchCard:hover {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.12), rgba(0, 164, 219, 0.12));
-            border-color: rgba(0, 164, 220, 0.4);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 164, 220, 0.15);
-        }
-
-        .logSwitchCard:hover {
-            background: linear-gradient(135deg, rgba(76, 175, 80, 0.12), rgba(33, 150, 243, 0.12));
-            border-color: rgba(76, 175, 80, 0.4);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.15);
-        }
-        
-        .searchItemCard:hover {
-            background: linear-gradient(135deg, rgba(0, 188, 212, 0.12), rgba(0, 229, 255, 0.12));
-            border-color: rgba(0, 188, 212, 0.4);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 188, 212, 0.15);
-        }
-
-        .addSourceItemCard:hover {
-            background: linear-gradient(135deg, rgba(255, 152, 0, 0.12), rgba(255, 193, 7, 0.12));
-            border-color: rgba(255, 152, 0, 0.4);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(255, 152, 0, 0.15);
-        }
-
-        .customCorsProxyCard {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: 64px;
-            flex: 1 1 calc(50% - 8px);
-            min-width: 280px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        .controlInfo {
-            display: flex;
-            align-items: center;
-            flex: 1;
-        }
-
-        .controlTitle {
-            font-size: 15px;
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 2px;
-        }
-
-        .controlDescription {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
-        }
-
-        .searchItemControlAction {
-            padding: 6px 12px;
-            background: rgba(0, 188, 212, 0.15);
-            border-radius: 6px;
-            color: #00BCD4;
-            font-size: 12px;
-            font-weight: 500;
-            border: 1px solid rgba(0, 188, 212, 0.25);
-        }
-
-        .addSourceItemControlAction {
-            padding: 6px 12px;
-            background: rgba(255, 152, 0, 0.15);
-            border-radius: 6px;
-            color: #FF9800;
-            font-size: 12px;
-            font-weight: 500;
-            border: 1px solid rgba(255, 152, 0, 0.25);
-        }
-
-        .settingLabel {
-            font-size: 14px;
-            font-weight: 500;
-            color: #fff;
-            flex: 0 0 auto;
-            margin-right: 20px;
-            min-width: 120px;
-            text-align: left;
-            line-height: 1.4;
-        }
-
-        .styledRange {
-            max-width: 200px;
-            height: 6px;
-            border-radius: 3px;
-            background: rgba(0, 164, 220, 1);
-            outline: none;
-            -webkit-appearance: none;
-            appearance: none;
-            flex: 1;
-        }
-
-        .styledTextInput{
-            min-width: 180px;
-            max-width: 100%;
-            width: 100%;
-            padding: 10px 16px;
-            border-radius: 12px;
-            border: 2px solid rgba(0, 164, 220, 0.4);
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.08), rgba(0, 164, 219, 0.08));
-            color: #fff;
-            font-size: 14px;
-            font-weight: 500;
-            min-height: 40px;
-            line-height: 1.6;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            box-sizing: border-box;
-            box-shadow: 
-                0 2px 8px rgba(0, 164, 220, 0.15),
-                inset 0 1px 2px rgba(255, 255, 255, 0.1),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05);
-        }
-
-        .styledTextInput:focus {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.18), rgba(0, 164, 219, 0.18)) !important;
-            border-color: rgba(0, 164, 220, 0.8) !important;
-            box-shadow:
-                0 0 0 5px rgba(0, 164, 220, 0.2),
-                0 6px 25px rgba(0, 164, 220, 0.35),
-                inset 0 1px 2px rgba(255, 255, 255, 0.2),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: translateY(-1px) scale(1.01) !important;
-        }
-
-        .styledTextInput:blur {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.08), rgba(0, 164, 219, 0.08)) !important;
-            border: 2px solid rgba(0, 164, 220, 0.4) !important;
-            box-shadow: 0 2px 8px rgba(0, 164, 220, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: translateY(0) scale(1) !important;
-        }
-
-        .styledTextInput:hover:not(:focus) {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.12), rgba(0, 164, 219, 0.12)) !important;
-            border: 2px solid rgba(0, 164, 220, 0.6) !important;
-            box-shadow: 0 4px 15px rgba(0, 164, 220, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.15), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: translateY(-1px) scale(1.01) !important;
-        }
-            
-        .styledTextInput:not(:focus):not(:hover) {
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.08), rgba(160, 160, 160, 0.08)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.4) !important;
-            box-shadow: 0 2px 8px rgba(128, 128, 128, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: translateY(0) scale(1) !important;
-        }
-
-        .settingItem {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            margin-bottom: 12px;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: 56px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        .settingItem input[type="text"],
-        .settingItem input[type="number"],
-        .settingItem input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
-            flex: 1;
-        }
-
-        .danmakuSidebar *{
-            box-sizing: border-box !important;
-        }
-        
-        .danmakuSidebar label,
-        .danmakuSidebar input[type="checkbox"]:parent,
-        .danmakuSidebar input[type="radio"]:parent{
-            max-width: 100% !important;
-            overflow: hidden !important;
-            word-wrap: break-word !important;
-            text-overflow: ellipsis !important;
-        }
-
-        /* 单个复选框/单选框样式（非组合） */
-        .checkbox-item-custom {
-            width: 18px !important;
-            height: 18px !important;
-            cursor: pointer !important;
-            position: relative !important;
-            -webkit-appearance: none !important;
-            appearance: none !important;
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.08), rgba(160, 160, 160, 0.08)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.4) !important;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            box-shadow: 
-                0 2px 8px rgba(0, 164, 220, 0.15),
-                inset 0 1px 2px rgba(255, 255, 255, 0.1),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-        }
-        
-        .checkbox-item-custom.checked {
-            background: rgba(0, 164, 220, 1) !important;
-            border: 2px solid rgba(0, 164, 220, 0.8) !important;
-            box-shadow: 0 2px 12px rgba(0, 164, 220, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-        }
-        
-        .checkbox-item-custom:hover:not(.checked) {
-            border: 2px solid rgba(0, 164, 220, 0.6) !important;
-            background: rgba(255, 255, 255, 0.15) !important;
-        }
-        
-        /* 复选框组合样式覆盖单个样式 */
-        .checkbox-item-parent .checkbox-item-custom {
-            margin-right: 0 !important;
-            margin-left: 0 !important;
-            order: 1 !important;
-            width: 22px !important;
-            height: 22px !important;
-            cursor: pointer !important;
-            position: relative !important;
-            -webkit-appearance: none !important;
-            appearance: none !important;
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.08), rgba(160, 160, 160, 0.08)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.4) !important;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
-            flex-shrink: 0 !important;
-            box-shadow: 
-                0 2px 8px rgba(0, 164, 220, 0.15),
-                inset 0 1px 2px rgba(255, 255, 255, 0.1),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-        }
-        
-        .checkbox-item-parent .checkbox-item-custom.checked {
-            background: rgba(0, 164, 220, 1) !important;
-            border: 2px solid rgba(0, 164, 220, 0.8) !important;
-            box-shadow: 0 2px 12px rgba(0, 164, 220, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: scale(1.05) !important;
-        }
-        
-        .checkbox-item-parent .checkbox-item-custom:not(.checked) {
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.08), rgba(160, 160, 160, 0.08)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.4) !important;
-            box-shadow: 0 2px 8px rgba(128, 128, 128, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: scale(1) !important;
-        }
-
-        /* 复选框和单选框组样式 */
-        .checkbox-group-container {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 8px !important;
+        #dialogInput {
             width: 100% !important;
-            max-width: 100% !important;
+            margin-bottom: 20px !important;
             box-sizing: border-box !important;
         }
-        
-        .checkbox-item-parent {
+
+        input#danmakuFontFamily:focus,
+        input#danmakuOffsetTime:focus,
+        input#danmakuFontOptions:focus,
+        input#dialogInput:focus,
+        .custom-input-field:focus,
+        .styledTextInput:focus {
+            border-color: var(--danmaku-jf-accent) !important;
+            background: #181818 !important;
+            box-shadow: 0 0 0 2px var(--danmaku-jf-focus) !important;
+            outline: none !important;
+            transform: none !important;
+        }
+
+        .danmakuSidebar select.danmakuSelectInput,
+        .danmakuSidebar .styledSelectInput {
+            min-height: 36px !important;
+            width: 100% !important;
+            max-width: 230px !important;
+            padding: 7px 28px 7px 10px !important;
+            border: 1px solid var(--danmaku-jf-border-strong) !important;
+            border-radius: 4px !important;
+            background: #1b1b1b !important;
+            color: var(--danmaku-jf-text) !important;
+            color-scheme: dark !important;
+            font-size: 13px !important;
+            font-weight: 400 !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+
+        .danmakuSidebar select.danmakuSelectInput:focus,
+        .danmakuSidebar .styledSelectInput:focus,
+        .danmakuMultiSelect[open] > summary,
+        .danmakuMultiSelect > summary:focus {
+            border-color: var(--danmaku-jf-accent) !important;
+            box-shadow: 0 0 0 2px var(--danmaku-jf-focus) !important;
+            outline: none !important;
+        }
+
+        .danmakuMultiSelect {
+            width: 100% !important;
+            max-width: 230px !important;
+            color: var(--danmaku-jf-text) !important;
+            position: relative !important;
+        }
+
+        .danmakuMultiSelect > summary {
+            min-height: 36px !important;
+            padding: 7px 10px !important;
+            border: 1px solid var(--danmaku-jf-border-strong) !important;
+            border-radius: 4px !important;
+            background: #1b1b1b !important;
+            color: var(--danmaku-jf-text) !important;
+            cursor: pointer !important;
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 16px 20px !important;
-            margin-bottom: 8px !important;
-            border-radius: 12px !important;
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.06), rgba(0, 164, 219, 0.06)) !important;
-            font-size: 14px !important;
-            font-weight: 500 !important;
-            color: rgba(255, 255, 255, 0.95) !important;
-            border: 2px solid rgba(0, 164, 220, 0.4) !important;
-            cursor: pointer !important;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
-            min-height: 44px !important;
-            position: relative !important;
-            overflow: hidden !important;
-            box-sizing: border-box !important;
-            box-shadow: 
-                0 2px 8px rgba(0, 164, 220, 0.1),
-                inset 0 1px 2px rgba(255, 255, 255, 0.08),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.03) !important;
-        }
-        
-        .checkbox-item-parent:hover {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.08), rgba(0, 164, 219, 0.08)) !important;
-            border: 2px solid rgba(0, 164, 220, 0.4) !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 0 4px 12px rgba(0, 164, 220, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.15) !important;
-        }
-        
-        .checkbox-item-parent.checked {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.15), rgba(0, 164, 219, 0.15)) !important;
-            border: 2px solid rgba(0, 164, 220, 0.6) !important;
-            box-shadow: 0 2px 12px rgba(0, 164, 220, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.15), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-        }
-        
-        .checkbox-item-parent.checked:hover {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.25), rgba(0, 164, 219, 0.25)) !important;
-            border: 2px solid rgba(0, 164, 220, 0.7) !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 0 4px 16px rgba(0, 164, 220, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.25) !important;
-        }
-        
-        .checkbox-item-parent.unchecked {
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.06), rgba(160, 160, 160, 0.06)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.2) !important;
-            box-shadow: 0 2px 8px rgba(128, 128, 128, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.08), inset 0 -1px 1px rgba(0, 0, 0, 0.03) !important;
-        }
-        
-        .checkbox-item-parent.unchecked:hover {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.08), rgba(0, 164, 219, 0.08)) !important;
-            border: 2px solid rgba(0, 164, 220, 0.4) !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 0 4px 12px rgba(0, 164, 220, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.15) !important;
-        }
-        
-        .checkbox-item-custom {
-            margin-right: 0 !important;
-            margin-left: 0 !important;
-            order: 1 !important;
-            width: 22px !important;
-            height: 22px !important;
-            cursor: pointer !important;
-            position: relative !important;
-            -webkit-appearance: none !important;
-            appearance: none !important;
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.08), rgba(160, 160, 160, 0.08)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.4) !important;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
-            flex-shrink: 0 !important;
-            box-shadow: 
-                0 2px 8px rgba(0, 164, 220, 0.15),
-                inset 0 1px 2px rgba(255, 255, 255, 0.1),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-        }
-        
-        .checkbox-item-custom.checkbox {
-            border-radius: 6px !important;
-        }
-        
-        .checkbox-item-custom.radio {
-            border-radius: 50% !important;
-        }
-        
-        .checkbox-item-custom.checked {
-            background: rgba(0, 164, 220, 1) !important;
-            border: 2px solid rgba(0, 164, 220, 0.8) !important;
-            box-shadow: 0 2px 12px rgba(0, 164, 220, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: scale(1.05) !important;
-        }
-        
-        .checkbox-item-custom:not(.checked) {
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.08), rgba(160, 160, 160, 0.08)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.4) !important;
-            box-shadow: 0 2px 8px rgba(128, 128, 128, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            transform: scale(1) !important;
-        }
-        
-        .checkbox-item-parent:hover .checkbox-item-custom:not(.checked) {
-            border: 2px solid rgba(0, 164, 220, 0.6) !important;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(0, 164, 220, 0.1)) !important;
-            transform: scale(1.1) !important;
-        }
-        
-        .checkbox-item-parent:hover .checkbox-item-custom.checked {
-            transform: scale(1.15) !important;
-        }
-        
-        .checkbox-item-label {
-            flex: 1 !important;
-            text-align: right !important;
-            order: 2 !important;
-            margin-right: 12px !important;
-            line-height: 1.4 !important;
-            word-wrap: break-word !important;
-            overflow: hidden !important;
-            max-width: calc(100% - 40px) !important;
-            box-sizing: border-box !important;
-        }
-        
-        .check-mark {
-            position: absolute !important;
-            left: 5px !important;
-            top: 1px !important;
-            width: 6px !important;
-            height: 10px !important;
-            border: solid white !important;
-            border-width: 0 2px 2px 0 !important;
-            transform: rotate(45deg) scale(0) !important;
-            transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
-            opacity: 0 !important;
-        }
-        
-        .check-mark.visible {
-            transform: rotate(45deg) scale(1) !important;
-            opacity: 1 !important;
-        }
-        
-        .radio-dot {
-            position: absolute !important;
-            left: 50% !important;
-            top: 50% !important;
-            width: 8px !important;
-            height: 8px !important;
-            background: white !important;
-            border-radius: 50% !important;
-            transform: translate(-50%, -50%) scale(0) !important;
-            transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
-            opacity: 0 !important;
-        }
-        
-        .radio-dot.visible {
-            transform: translate(-50%, -50%) scale(1) !important;
-            opacity: 1 !important;
-        }
-        
-        .setting-item-column {
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            padding: 20px !important;
+            gap: 10px !important;
+            list-style: none !important;
         }
 
-        /* 调整播放器设置菜单位置 - 距离底部5%屏幕高度，位于右侧 - 仅在视频播放界面生效 */
-        .actionSheet.centeredDialog:has([data-id="aspectratio"]):has([data-id="playbackrate"]),
-        .actionSheet.centeredDialog.video-player-settings-menu {
-            position: fixed !important;
-            bottom: 5vh !important;
-            top: auto !important;
-            transform: none !important;
+        .danmakuMultiSelect > summary::-webkit-details-marker {
+            display: none !important;
+        }
+
+        .danmakuMultiSelect > summary::after {
+            content: "" !important;
+            width: 6px !important;
+            height: 6px !important;
+            border-right: 1px solid var(--danmaku-jf-muted) !important;
+            border-bottom: 1px solid var(--danmaku-jf-muted) !important;
+            color: var(--danmaku-jf-muted) !important;
+            transform: rotate(45deg) !important;
+            transition: transform 0.12s ease !important;
+        }
+
+        .danmakuMultiSelect[open] > summary::after {
+            transform: rotate(225deg) !important;
+        }
+
+        .danmakuMultiSelectValue {
+            min-width: 0 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+        }
+
+        .danmakuMultiSelectMenu {
+            margin-top: 6px !important;
+            padding: 4px !important;
+            border: 1px solid var(--danmaku-jf-border) !important;
+            border-radius: 4px !important;
+            background: #1b1b1b !important;
+            max-height: 180px !important;
+            overflow-y: auto !important;
+        }
+
+        .danmakuSidebar .danmakuMultiSelectOption {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 8px !important;
+            min-height: 34px !important;
+            padding: 6px 8px !important;
+            border-radius: 3px !important;
+            color: var(--danmaku-jf-text) !important;
+            cursor: pointer !important;
+            overflow: visible !important;
+            max-width: none !important;
+        }
+
+        .danmakuSidebar .danmakuMultiSelectOption:hover {
+            background: rgba(255, 255, 255, 0.06) !important;
+        }
+
+        .danmakuSidebar .danmakuMultiSelectOption input[type="checkbox"] {
+            flex: 0 0 auto !important;
             margin: 0 !important;
         }
 
-        .actionSheet.centeredDialog:has([data-id="aspectratio"]):has([data-id="playbackrate"])[style*="top:"],
-        .actionSheet.centeredDialog:has([data-id="aspectratio"]):has([data-id="playbackrate"])[style*="left:"],
-        .actionSheet.centeredDialog.video-player-settings-menu[style*="top:"],
-        .actionSheet.centeredDialog.video-player-settings-menu[style*="left:"] {
-            bottom: 5vh !important;
-            top: auto !important;
-            transform: none !important;
-        }
-
-        /* 播放器设置菜单优化 - 仅在视频播放界面生效 */
-        .actionSheet:has([data-id="aspectratio"]):has([data-id="playbackrate"]) .actionSheetContent,
-        .actionSheet.video-player-settings-menu .actionSheetContent {
-            max-height: 40vh !important;
-            overflow-y: auto !important;
-            border-radius: 8px !important;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
-            min-width: 180px !important;
-        }
-
-        /* 播放器设置菜单中的弹幕设置项样式 */
-        [data-id="danmaku-settings"] {
-            transition: all 0.3s ease !important;
-        }
-
-        [data-id="danmaku-settings"]:hover {
-            background: rgba(255, 255, 255, 0.1) !important;
-        }
-
-        [data-id="danmaku-settings"] .actionSheetItemText {
-            color: inherit !important;
-        }
-
-        /* 自定义复选框和单选框样式 */
+        .checkbox-item-custom,
         .danmakuSidebar input[type="checkbox"],
         .danmakuSidebar input[type="radio"] {
             -webkit-appearance: none !important;
             appearance: none !important;
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.08), rgba(160, 160, 160, 0.08)) !important;
-            border: 2px solid rgba(128, 128, 128, 0.4) !important;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            cursor: pointer !important;
             position: relative !important;
-            box-shadow: 
-                0 2px 8px rgba(128, 128, 128, 0.15),
-                inset 0 1px 2px rgba(255, 255, 255, 0.1),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
+            width: 18px !important;
+            height: 18px !important;
+            border: 1px solid var(--danmaku-jf-border-strong) !important;
+            background: #1b1b1b !important;
+            background-image: none !important;
+            box-shadow: none !important;
+            transform: none !important;
+            cursor: pointer !important;
+            transition: background-color 0.12s ease, border-color 0.12s ease !important;
         }
 
+        .checkbox-item-custom.checkbox,
         .danmakuSidebar input[type="checkbox"] {
-            border-radius: 6px !important;
-            width: 20px !important;
-            height: 20px !important;
+            border-radius: 3px !important;
         }
 
+        .checkbox-item-custom.radio,
         .danmakuSidebar input[type="radio"] {
             border-radius: 50% !important;
-            width: 20px !important;
-            height: 20px !important;
         }
 
+        .checkbox-item-custom.checked,
         .danmakuSidebar input[type="checkbox"]:checked,
         .danmakuSidebar input[type="radio"]:checked {
-            background: rgba(0, 164, 220, 1) !important;
-            border-color: rgba(0, 164, 220, 0.8) !important;
-            box-shadow: 0 2px 12px rgba(0, 164, 220, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
+            background: var(--danmaku-jf-accent) !important;
+            border-color: var(--danmaku-jf-accent) !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
 
         .danmakuSidebar input[type="checkbox"]:checked::after {
-            content: "✓" !important;
+            content: "" !important;
             position: absolute !important;
-            left: 50% !important;
-            top: 50% !important;
-            transform: translate(-50%, -50%) !important;
-            color: white !important;
-            font-size: 12px !important;
-            font-weight: bold !important;
+            left: 5px !important;
+            top: 2px !important;
+            width: 4px !important;
+            height: 8px !important;
+            border: solid #fff !important;
+            border-width: 0 2px 2px 0 !important;
+            transform: rotate(45deg) !important;
         }
 
         .danmakuSidebar input[type="radio"]:checked::after {
@@ -3554,30 +3549,37 @@
             position: absolute !important;
             left: 50% !important;
             top: 50% !important;
-            transform: translate(-50%, -50%) !important;
-            width: 8px !important;
-            height: 8px !important;
-            background: white !important;
+            width: 6px !important;
+            height: 6px !important;
             border-radius: 50% !important;
+            background: #fff !important;
+            transform: translate(-50%, -50%) !important;
         }
 
+        .checkbox-item-parent:hover .checkbox-item-custom:not(.checked),
+        .checkbox-item-parent:hover .checkbox-item-custom.checked,
+        .checkbox-item-custom:hover:not(.checked),
         .danmakuSidebar input[type="checkbox"]:hover:not(:checked),
         .danmakuSidebar input[type="radio"]:hover:not(:checked) {
-            border: 2px solid rgba(0, 164, 220, 0.6) !important;
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.12), rgba(0, 164, 219, 0.12)) !important;
-            box-shadow: 0 4px 15px rgba(0, 164, 220, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.12), inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
+            border-color: rgba(255, 255, 255, 0.38) !important;
+            background: #242424 !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
 
-        /* 现代化开关样式 */
+        .check-mark,
+        .radio-dot {
+            transition: none !important;
+        }
+
         .modernSwitch {
             position: relative !important;
             display: inline-block !important;
-            width: 44px !important;
-            height: 24px !important;
+            width: 40px !important;
+            height: 22px !important;
+            flex: 0 0 40px !important;
             padding: 0 !important;
             margin: 0 !important;
-            background: transparent !important;
-            border: none !important;
             cursor: pointer !important;
         }
 
@@ -3591,206 +3593,151 @@
 
         .modernSlider {
             position: absolute !important;
+            inset: 0 !important;
             cursor: pointer !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            background: rgba(255, 255, 255, 0.2) !important;
-            border-radius: 24px !important;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            width: 44px !important;
-            height: 24px !important;
+            width: 40px !important;
+            height: 22px !important;
+            background: rgba(255, 255, 255, 0.22) !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+            box-shadow: none !important;
+            transition: background-color 0.12s ease !important;
         }
 
         .modernSlider:before {
             position: absolute !important;
             content: "" !important;
-            height: 18px !important;
             width: 18px !important;
+            height: 18px !important;
             left: 2px !important;
             bottom: 2px !important;
-            background: white !important;
+            background: #fff !important;
             border-radius: 50% !important;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
+            transition: transform 0.12s ease !important;
         }
 
         .modernSwitch input:checked + .modernSlider {
-            background: rgba(0, 164, 220, 1) !important;
-            border-color: transparent !important;
+            background: var(--danmaku-jf-accent) !important;
         }
 
         .modernSwitch input:checked + .modernSlider:before {
-            transform: translateX(20px) !important;
-            box-shadow: 0 1px 4px rgba(0, 164, 220, 0.3) !important;
+            transform: translateX(18px) !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
         }
 
-        .modernSlider:hover {
-            box-shadow: 0 0 8px rgba(0, 164, 220, 0.2) !important;
-        }
-
+        .modernSlider:hover,
         .modernSwitch input:checked + .modernSlider:hover {
-            box-shadow: 0 0 8px rgba(0, 164, 220, 0.4) !important;
+            box-shadow: none !important;
         }
 
-        /* 控制卡片样式 */
-        .controlCard {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        .customCorsProxyCard {
+            flex-direction: column !important;
+            gap: 10px !important;
+            align-items: stretch !important;
         }
 
-        .controlCard:hover {
-            transform: translateY(-2px) !important;
-        }
-
-        /* 控制项样式 */
-        .controlItem,
-        .controlCard {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
-
-        .controlItem:hover,
-        .controlCard:hover {
-            transform: translateY(-2px) !important;
-        }
-
-        /* 强制样式覆盖 - 确保所有danmaku相关输入框都使用新样式 */
-        input#danmakuFontFamily,
-        input#danmakuOffsetTime,
-        input#danmakuFontOptions,
-        input#dialogInput,
-        [id*="danmaku"] input[type="text"],
-        [id*="danmaku"] input[type="number"] {
-            background: linear-gradient(135deg, rgba(128, 128, 128, 0.06), rgba(160, 160, 160, 0.06)) !important;
-            border: 2px solid rgba(100, 100, 100, 0.3) !important;
-            border-radius: 12px !important;
-            padding: 10px 16px !important;
-            color: #fff !important;
-            font-size: 14px !important;
-            font-weight: 500 !important;
-            min-height: 40px !important;
-            line-height: 1.6 !important;
-            box-sizing: border-box !important;
-            max-width: 100% !important;
-            box-shadow: 
-                0 2px 8px rgba(100, 100, 100, 0.15),
-                inset 0 1px 2px rgba(255, 255, 255, 0.1),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-        }
-
-        input#danmakuFontFamily:focus,
-        input#danmakuOffsetTime:focus,
-        input#danmakuFontOptions:focus,
-        input#dialogInput:focus {
-            background: linear-gradient(135deg, rgba(0, 164, 220, 0.1), rgba(0, 164, 219, 0.1)) !important;
-            border-color: rgba(0, 164, 220, 0.6) !important;
-            box-shadow: 
-                0 0 0 3px rgba(0, 164, 220, 0.2),
-                0 5px 10px rgba(0, 164, 220, 0.35),
-                inset 0 1px 2px rgba(255, 255, 255, 0.2),
-                inset 0 -1px 1px rgba(0, 0, 0, 0.05) !important;
-            outline: none !important;
-            transform: translateY(-1px) scale(1.01) !important;
-        }
-
-        #dialogInput {
-            width: 100%;
-            margin-bottom: 20px;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        /* 自定义CORS代理和API输入框样式 */
         .custom-input-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: 100%;
-            margin-bottom: 8px;
+            display: flex !important;
+            align-items: center !important;
+            width: 100% !important;
+            margin: 0 !important;
+            gap: 8px !important;
         }
 
         .custom-input-label {
-            width: 75px;
-            text-align: right;
-            flex-shrink: 0;
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 13px;
-            font-weight: 500;
+            width: 72px !important;
+            flex: 0 0 72px !important;
         }
 
-        .custom-input-field {
-            flex-grow: 1;
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 8px;
-            background: rgba(0, 0, 0, 0.3);
-            color: white;
-            font-size: 13px;
-            font-family: inherit;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            outline: none;
+        .dialogOverlay {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 2000000 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: rgba(0, 0, 0, 0.72) !important;
         }
 
-        .custom-input-field::placeholder {
-            color: rgba(255, 255, 255, 0.5);
+        .inputDialog,
+        .selectDialog {
+            width: 400px !important;
+            max-width: 90vw !important;
+            max-height: 80vh !important;
+            padding: 24px !important;
+            background: var(--danmaku-jf-panel) !important;
+            backdrop-filter: none !important;
+            border: 1px solid var(--danmaku-jf-border) !important;
+            border-radius: 4px !important;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55) !important;
+            position: relative !important;
+            box-sizing: border-box !important;
         }
 
-        .custom-input-field:hover {
-            border-color: rgba(255, 255, 255, 0.25);
-            background: rgba(0, 0, 0, 0.4);
+        .selectDialog {
+            width: 500px !important;
+            display: flex !important;
+            flex-direction: column !important;
         }
 
-        .custom-input-field:focus {
-            border-color: rgba(0, 164, 220, 0.6);
-            background: rgba(0, 164, 220, 0.08);
-            box-shadow: 0 0 0 2px rgba(0, 164, 220, 0.15);
-            transform: translateY(-1px);
+        .dialogActions {
+            display: flex !important;
+            justify-content: flex-end !important;
+            gap: 8px !important;
         }
 
-        
-        /* 响应式设计 */
-        @media (max-width: 900px) {
-            .controlCard {
-                flex: 1 1 calc(50% - 12px) !important;
-                min-width: 260px !important;
-            }
+        .glassLayer {
+            display: none !important;
         }
-        
+
+        .dialogTitle {
+            margin: 0 0 16px !important;
+            color: var(--danmaku-jf-text) !important;
+            font-size: 17px !important;
+            font-weight: 500 !important;
+        }
+
+        .selectDialogList {
+            flex: 1 1 auto !important;
+            max-height: 400px !important;
+            overflow-y: auto !important;
+            margin-bottom: 20px !important;
+            border: 1px solid var(--danmaku-jf-border) !important;
+            border-radius: 4px !important;
+            background: #1b1b1b !important;
+            scrollbar-width: thin !important;
+            scrollbar-color: rgba(255, 255, 255, 0.28) transparent !important;
+        }
+
+        .select-dialog-item {
+            padding: 10px 12px !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+            color: var(--danmaku-jf-text) !important;
+            cursor: pointer !important;
+            transition: background-color 0.12s ease !important;
+        }
+
+        .select-dialog-item.selected {
+            background: rgba(0, 164, 220, 0.22) !important;
+        }
+
+        .select-dialog-item:hover:not(.selected) {
+            background: rgba(255, 255, 255, 0.06) !important;
+        }
+
+        [data-id="danmaku-settings"] {
+            transition: background-color 0.12s ease !important;
+        }
+
+        [data-id="danmaku-settings"]:hover {
+            background: rgba(255, 255, 255, 0.08) !important;
+        }
+
         @media (max-width: 600px) {
             .danmakuSidebar {
-                width: 95% !important;
+                width: 100vw !important;
                 max-width: none !important;
-            }
-            
-            .controlCard {
-                flex: 1 1 100% !important;
-                min-width: 100% !important;
-            }
-        }
-
-        @media (max-width: 400px) {
-            .controlCard .controlInfo {
-                flex-direction: column;
-                align-items: flex-start;
-                text-align: left;
-            }
-
-            .custom-input-group {
-                flex-direction: column;
-                align-items: stretch;
-                gap: 6px;
-            }
-            
-            .custom-input-label {
-                width: auto;
-                text-align: left;
-                font-size: 12px;
-            }
-            
-            .custom-input-field {
-                padding: 8px 10px;
-                font-size: 12px;
             }
         }
     `;
