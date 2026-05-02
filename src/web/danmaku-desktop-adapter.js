@@ -9,6 +9,7 @@
         rate: 1,
         wired: false,
         observing: false,
+        itemId: null,
         media: null
     };
 
@@ -38,6 +39,30 @@
             if (typeof value === 'number' && value > 0) return value;
         }
         return state.rate || 1;
+    }
+
+    function currentItem() {
+        return player()?._currentPlayOptions?.item || null;
+    }
+
+    function emitItemChanged() {
+        const item = currentItem();
+        const itemId = item?.Id || null;
+        if (!itemId || itemId === state.itemId) return;
+
+        state.itemId = itemId;
+        window.dispatchEvent(new CustomEvent('jellyfinDesktopDanmakuItemChanged', {
+            detail: { itemId, item }
+        }));
+    }
+
+    function clearItem() {
+        if (!state.itemId) return;
+
+        state.itemId = null;
+        window.dispatchEvent(new CustomEvent('jellyfinDesktopDanmakuItemChanged', {
+            detail: { itemId: null, item: null }
+        }));
     }
 
     function dispatch(type) {
@@ -107,6 +132,7 @@
     function maybeActivate() {
         if (document.querySelector('.videoPlayerContainer') || player()?._currentPlayOptions) {
             ensurePlaybackDom();
+            emitItemChanged();
         }
     }
 
@@ -118,6 +144,7 @@
         p.playing.connect(() => {
             state.paused = false;
             ensurePlaybackDom();
+            emitItemChanged();
             dispatch('play');
             dispatch('playing');
         });
@@ -133,14 +160,17 @@
             state.paused = true;
             dispatch('pause');
             dispatch('ended');
+            clearItem();
         });
         p.stopped.connect(() => {
             state.paused = true;
             dispatch('pause');
+            clearItem();
         });
         p.canceled.connect(() => {
             state.paused = true;
             dispatch('pause');
+            clearItem();
         });
 
         if (window.api.input && window.api.input.rateChanged) {
