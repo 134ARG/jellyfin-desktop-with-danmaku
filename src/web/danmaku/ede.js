@@ -35,7 +35,6 @@
     if (!appMeta || appMeta.content !== 'Jellyfin') {
         return;
     }
-    console.log('[DanmakuDesktop] danmaku plugin started');
     // ------ configs start------
     const corsProxy = 'https://ddplay-api.930524.xyz/cors/';
     const apiPrefix = 'https://api.dandanplay.net';
@@ -43,12 +42,8 @@
     const maxCanvasDevicePixelRatio = 1.5;
     window.__JELLYFIN_DANMAKU_MAX_DPR = maxCanvasDevicePixelRatio;
     const disableTextStrokeForTest = false;
-    // Dormant send/login support; keep the upstream state line close by for easy restore.
-    // let ddplayStatus = JSON.parse(localStorage.getItem('ddplayStatus')) || { isLogin: false, token: '', tokenExpire: 0 };
-    // const check_interval = 200;
     // 0:当前状态关闭 1:当前状态打开
     let danmaku_icons = ['comments_disabled', 'comment'];
-    // const send_icon = 'send';
     const spanClass = 'xlargePaperIconButton material-icons ';
     const buttonOptions = {
         class: 'paper-icon-button-light',
@@ -103,146 +98,6 @@
             danmuShowSwitch();
         },
     };
-
-    /*
-     * Dormant upstream send/login UI. The desktop integration currently keeps
-     * playback-side effects only; uncomment this block with the matching
-     * login/send helpers below if we want to restore sending danmaku.
-    const sendDanmakuOpts = {
-        title: '发送弹幕',
-        id: 'sendDanmaku',
-        class: send_icon,
-        onclick: () => {
-            // 登录窗口
-            if (!document.getElementById('loginDialog')) {
-                const modal = document.createElement('div');
-                modal.id = 'loginDialog';
-                modal.className = 'dialogContainer';
-                modal.style.display = 'none';
-                modal.innerHTML = `
-                <div class="dialog" style="padding: 20px; border-radius: .3em; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);">
-                <form id="loginForm">
-                    <div style="display: flex; flex-direction: column; gap: 5px;">
-                        <div style="display: flex;">
-                            <span style="flex: auto;">请输入弹弹Play账号密码</span>
-                        </div>
-                        <div style="display: flex;">
-                            <span style="flex: auto;">账号:</span>
-                            <input id="ddPlayAccount" placeholder="账号" value="" style="width: 70%;" />
-                        </div>
-                        <div style="display: flex;">
-                            <span style="flex: auto;">密码:</span>
-                            <input id="ddPlayPassword" placeholder="密码" value="" style="width: 70%;" type="password" />
-                        </div>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-                        <button id="loginBtn" class="raised button-submit block formDialogFooterItem emby-button" type="submit">登录</button>
-                        <button id="cancelBtn" class="raised button-cancel block formDialogFooterItem emby-button" type="button">取消</button>
-                    </div>
-                </form>
-                </div>
-                `;
-                document.body.appendChild(modal);
-
-                document.getElementById('loginForm').onsubmit = (e) => {
-                    e.preventDefault();
-                    const account = document.getElementById('ddPlayAccount').value;
-                    const password = document.getElementById('ddPlayPassword').value;
-                    if (account && password) {
-                        loginDanDanPlay(account, password).then((status) => {
-                            if (status) {
-                                document.getElementById('loginBtn').innerText = '登录✔️';
-                                let sleep = new Promise((resolve) => setTimeout(resolve, 1500));
-                                sleep.then(() => {
-                                    document.getElementById('loginDialog').style.display = 'none';
-                                });
-                                modal.removeEventListener('keydown', (event) => event.stopPropagation(), true);
-                            }
-                        });
-                    }
-                };
-                document.getElementById('cancelBtn').onclick = () => {
-                    document.getElementById('loginDialog').style.display = 'none';
-                    modal.removeEventListener('keydown', (event) => event.stopPropagation(), true);
-                };
-            }
-
-            // 发送窗口
-            if (!document.getElementById('sendDanmakuDialog')) {
-                const modal = document.createElement('div');
-                modal.id = 'sendDanmakuDialog';
-                modal.className = 'dialogContainer';
-                modal.style.display = 'none';
-                modal.innerHTML = `
-                <div class="dialog" style="padding: 20px; border-radius: .3em; position: fixed; left: 50%; bottom: 0; transform: translate(-50%, -50%); width: 40%;">
-                <form id="sendDanmakuForm" autocomplete="off">
-                    <div style="display: flex; flex-direction: column; gap: 5px;">
-                        <div style="display: flex;">
-                            <span id="lbAnimeTitle" style="flex: auto;"></span>
-                        </div>
-                        <div style="display: flex;">
-                            <span id="lbEpisodeTitle" style="flex: auto;"></span>
-                        </div>
-                        <div style="display: flex;">
-                            <div><input type="radio" id="danmakuMode1" name="danmakuMode" value="1" checked>
-                            <label for="danmakuMode1">滚动</label></div>
-                            <div><input type="radio" id="danmakuMode4" name="danmakuMode" value="4">
-                            <label for="danmakuMode4">底部</label></div>
-                            <div><input type="radio" id="danmakuMode5" name="danmakuMode" value="5">
-                            <label for="danmakuMode5">顶部</label></div>
-                        </div>
-                        <div style="display: flex;">
-                            <input style="flex-grow: 1;" id="danmakuText" placeholder="请输入弹幕内容" value="" />
-                            <button id="sendDanmakuBtn" class="raised button-submit emby-button" style="padding: .2em .5em;" type="submit">发送</button>
-                            <button id="cancelSendDanmakuBtn" class="raised button-cancel emby-button" style="padding: .2em .5em;" type="button">取消</button>
-                        </div>
-                    </div>
-                </form>
-                </div>
-                `;
-                document.body.appendChild(modal);
-                document.getElementById('sendDanmakuForm').onsubmit = (e) => {
-                    e.preventDefault();
-                    const danmakuText = document.getElementById('danmakuText').value;
-                    if (danmakuText === '') {
-                        const txt = document.getElementById('danmakuText');
-                        txt.placeholder = '弹幕内容不能为空！';
-                        txt.focus();
-                        return;
-                    }
-                    const _media = document.querySelector(mediaQueryStr);
-                    const currentTime = _media.currentTime;
-                    const mode = parseInt(document.querySelector('input[name="danmakuMode"]:checked').value);
-                    sendDanmaku(danmakuText, currentTime, mode);
-                    // 清空输入框的值
-                    document.getElementById('danmakuText').value = '';
-                    modal.style.display = 'none';
-                    modal.removeEventListener('keydown', (event) => event.stopPropagation(), true);
-                };
-                document.getElementById('cancelSendDanmakuBtn').onclick = () => {
-                    modal.style.display = 'none';
-                    modal.removeEventListener('keydown', (event) => event.stopPropagation(), true);
-                };
-            }
-
-            if (ddplayStatus.isLogin) {
-                const txt = document.getElementById('danmakuText');
-                txt.placeholder = '请输入弹幕内容';
-                txt.value = '';
-                txt.focus();
-                document.getElementById('sendDanmakuDialog').style.display = 'block';
-                document.getElementById('sendDanmakuDialog').addEventListener('keydown', (event) => event.stopPropagation(), true);
-                const animeTitle = window.ede.episode_info ? window.ede.episode_info.animeTitle : '';
-                const episodeTitle = window.ede.episode_info ? window.ede.episode_info.episodeTitle : '';
-                document.getElementById('lbAnimeTitle').innerText = `当前番剧: ${animeTitle || ''}`;
-                document.getElementById('lbEpisodeTitle').innerText = `当前集数: ${episodeTitle || ''}`;
-            } else {
-                document.getElementById('loginDialog').style.display = 'block';
-                document.getElementById('loginDialog').addEventListener('keydown', (event) => event.stopPropagation(), true);
-            }
-        },
-    };
-     */
 
     // ------ configs end------
     /* eslint-disable */
@@ -311,7 +166,6 @@
             this.commentCacheKey = null;
             this.commentCache = null;
             this.obResize = null;
-            this.obMutation = null;
             this.loading = false;
         }
     }
@@ -1196,13 +1050,9 @@
                                 .then(() => {
                                     showDebugInfo('弹幕就位');
 
-                                    // Dormant upstream submission support:
-                                    // if (ddplayStatus.isLogin) {
-                                    //     postRelatedSource(source);
-                                    // }
                                 })
                                 .catch((error) => {
-                                    console.error(`创建弹幕失败: ${error.message}`);
+                                    showDebugInfo(`创建弹幕失败: ${error.message}`);
                                 });
                         }
                     });
@@ -1249,14 +1099,11 @@
 
     // 添加弹幕设置到播放器设置菜单
     function addDanmakuSettingsToMenu(actionSheet) {
-        console.log('[Danmaku Settings] 检测到播放器设置菜单');
-
         // 为播放器设置菜单添加特殊标识类
         actionSheet.classList.add('video-player-settings-menu');
 
         const scroller = actionSheet.querySelector('.actionSheetScroller');
         if (!scroller || scroller.querySelector('[data-id="danmaku-settings"]')) {
-            console.log('[Danmaku Settings] 菜单已存在或找不到滚动容器');
             return;
         }
 
@@ -1277,8 +1124,6 @@
 
             // 添加点击事件
             danmakuMenuItem.addEventListener('click', function (e) {
-                console.log('[Danmaku Settings] 弹幕设置菜单项被点击');
-
                 createDanmakuSidebar();
             });
 
@@ -1293,8 +1138,6 @@
             } else {
                 scroller.appendChild(danmakuMenuItem);
             }
-
-            console.log('[Danmaku Settings] 弹幕设置已添加到播放器设置菜单');
         }, 50);
     }
 
@@ -1345,21 +1188,6 @@
         return button;
     }
 
-    /*
-     * Upstream polling hook. Desktop now clears/reloads from item-change
-     * events, so this no-op interval target stays commented for easy restore.
-    function initListener() {
-        let container = document.querySelector(mediaQueryStr);
-        // 页面未加载
-        if (!container) {
-            if (window.ede.episode_info) {
-                window.ede.episode_info = null;
-            }
-            return;
-        }
-    }
-     */
-
     function initUI() {
         // 页面未加载
         let uiAnchor = document.getElementsByClassName(uiAnchorStr);
@@ -1393,8 +1221,6 @@
         // 弹幕开关
         displayButtonOpts.class = danmaku_icons[window.ede.danmakuSwitch];
         menubar.appendChild(createButton(displayButtonOpts));
-        // 发送弹幕
-        // menubar.appendChild(createButton(sendDanmakuOpts));
 
         let _container = null;
         document.querySelectorAll(mediaContainerQueryStr).forEach(function (element) {
@@ -1426,211 +1252,7 @@
         if (!getDesktopItemId()) {
             reloadDanmaku('init');
         }
-        // Dormant upstream send/login support:
-        // refreshDanDanPlayToken();
     }
-
-    /*
-     * Dormant upstream send/login helpers. Kept commented so restoring the
-     * disabled send button only needs this block and sendDanmakuOpts above.
-    async function loginDanDanPlay(account, passwd) {
-        const loginUrl = getApiPrefix() + '/api/v2/login';
-        const params = {
-            userName: account,
-            password: passwd,
-        };
-
-        try {
-            const resp = await fetch(loginUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                    'User-Agent': navigator.userAgent,
-                },
-                body: JSON.stringify(params),
-            });
-
-            if (resp.status !== 200) {
-                showDebugInfo('登录失败 http error:' + resp.status);
-                alert('登录失败 http error:' + resp.status);
-                return false;
-            }
-
-            const json = await resp.json();
-            if (json.errorCode !== 0) {
-                showDebugInfo('登录失败 ' + json.errorMessage);
-                alert('登录失败 ' + json.errorMessage);
-                return false;
-            }
-
-            ddplayStatus.isLogin = true;
-            ddplayStatus.token = json.token;
-            ddplayStatus.tokenExpire = json.tokenExpireTime;
-            window.localStorage.setItem('ddplayStatus', JSON.stringify(ddplayStatus));
-            showDebugInfo('登录成功');
-            return true;
-        } catch (error) {
-            console.error(`登录失败: ${error.message}`);
-            alert('登录失败');
-            return false;
-        }
-    }
-
-    async function refreshDanDanPlayToken() {
-        if (ddplayStatus.isLogin) {
-            const now = Math.floor(Date.now() / 1000);
-            const expire = new Date(ddplayStatus.tokenExpire).getTime() / 1000;
-            if (expire < now) {
-                ddplayStatus.isLogin = false;
-                return;
-            } else if (expire - now > 259200) {
-                // Token expires in more than 3 days, no need to refresh
-                return;
-            } else {
-                // Refresh token before 3 days
-                const refreshUrl = getApiPrefix() + '/api/v2/login/renew';
-                try {
-                    const resp = await fetch(refreshUrl, {
-                        method: 'GET',
-                        headers: {
-                            Accept: 'application/json',
-                            'User-Agent': navigator.userAgent,
-                            Authorization: 'Bearer ' + ddplayStatus.token,
-                        },
-                    });
-
-                    if (resp.status !== 200) {
-                        showDebugInfo('刷新弹弹Play Token失败 http error:' + resp.status);
-                        return;
-                    }
-
-                    const json = await resp.json();
-                    if (json.errorCode === 0) {
-                        ddplayStatus.isLogin = true;
-                        ddplayStatus.token = json.token;
-                        ddplayStatus.tokenExpire = json.tokenExpireTime;
-                    } else {
-                        showDebugInfo('刷新弹弹Play Token失败');
-                        showDebugInfo(json.errorMessage);
-                    }
-                } catch (error) {
-                    console.error(`刷新弹弹Play Token失败 ${error.message}`);
-                }
-            }
-        }
-    }
-
-    async function sendDanmaku(danmakuText, time, mode = 1, color = 0xffffff) {
-        if (ddplayStatus.isLogin) {
-            if (!window.ede.episode_info || !window.ede.episode_info.episodeId) {
-                showDebugInfo('发送弹幕失败 未获取到弹幕信息');
-                alert('请先获取弹幕信息');
-                return;
-            }
-            const danmakuUrl = getApiPrefix() + '/api/v2/comment/' + window.ede.episode_info.episodeId;
-            const params = {
-                time: time,
-                mode: mode,
-                color: color,
-                comment: danmakuText,
-            };
-            try {
-                const resp = await fetch(danmakuUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        'User-Agent': navigator.userAgent,
-                        Authorization: 'Bearer ' + ddplayStatus.token,
-                    },
-                    body: JSON.stringify(params),
-                });
-
-                if (resp.status !== 200) {
-                    showDebugInfo('发送弹幕失败 http error:' + resp.status);
-                    return;
-                }
-
-                const json = await resp.json();
-                if (json.errorCode === 0) {
-                    const colorStr = `000000${color.toString(16)}`.slice(-6);
-                    const modemap = { 6: 'ltr', 1: 'rtl', 5: 'top', 4: 'bottom' }[mode];
-                    const comment = {
-                        text: danmakuText,
-                        mode: modemap,
-                        time: time,
-                        style: {
-                            font: `${window.ede.fontOptions} ${window.ede.fontSize}px ${window.ede.fontFamily}`,
-                            fillStyle: `#${colorStr}`,
-                            // Temporary visual test: omit strokeStyle so the
-                            // bundled renderer skips strokeText().
-                            ...(disableTextStrokeForTest ? {} : {
-                                strokeStyle: colorStr === '000000' ? '#fff' : '#000',
-                                lineWidth: 2.0,
-                            }),
-                        },
-                    };
-                    window.ede.danmaku.emit(comment);
-                    showDebugInfo('发送弹幕成功');
-                } else {
-                    showDebugInfo('发送弹幕失败');
-                    showDebugInfo(json.errorMessage);
-                    alert('发送失败：' + json.errorMessage);
-                }
-            } catch (error) {
-                console.error(`发送弹幕失败 ${error.message}`);
-                showDebugInfo('发送弹幕失败');
-            }
-        }
-    }
-
-    async function postRelatedSource(relatedUrl) {
-        if (!ddplayStatus.isLogin) {
-            showDebugInfo('发送相关链接失败 未登录');
-            alert('请先登录');
-            return;
-        }
-        if (!window.ede.episode_info || !window.ede.episode_info.episodeId) {
-            showDebugInfo('发送弹幕失败 未获取到弹幕信息');
-            alert('请先获取弹幕信息');
-            return;
-        }
-        const url = getApiPrefix() + '/api/v2/related/' + window.ede.episode_info.episodeId;
-        const params = {
-            episodeId: window.ede.episode_info.episodeId,
-            url: relatedUrl,
-            shift: 0,
-        };
-        try {
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                    'User-Agent': navigator.userAgent,
-                    Authorization: 'Bearer ' + ddplayStatus.token,
-                },
-                body: JSON.stringify(params),
-            });
-            if (resp.status !== 200) {
-                showDebugInfo('发送相关链接失败 http error:' + resp.code);
-                return;
-            }
-            const json = await resp.json();
-            if (json.errorCode === 0) {
-                showDebugInfo('发送相关链接成功');
-            } else {
-                showDebugInfo('发送相关链接失败');
-                showDebugInfo(json.errorMessage);
-                alert('弹幕源提交弹弹Play失败：' + json.errorMessage);
-            }
-        } catch (error) {
-            console.error(`发送相关链接失败 ${error.message}`);
-            showDebugInfo('发送相关链接失败');
-        }
-    }
-     */
 
     function appendDebugLine(span, msgStr) {
         const lastBreak = span.innerHTML.lastIndexOf('<br>');
@@ -1673,7 +1295,9 @@
             }
         }
 
-        console.log(msg);
+        if (window.ede?.logSwitch === 1) {
+            console.log(msg);
+        }
     }
 
     function setCommentCache(cacheKey, comments) {
@@ -1759,6 +1383,13 @@
         let _id_key = '_anime_id_rel_' + _id;
         let _name_key = '_anime_name_rel_' + _id;
         let _episode_key = '_episode_id_rel_' + _id + '_' + episode;
+        const _episode_key_offset = _episode_key + '_offset';
+        if (window.ede.curEpOffsetModified) {
+            window.localStorage.setItem(_episode_key_offset, window.ede.curEpOffset);
+        }
+        const savedOffset = parseFloat(window.localStorage.getItem(_episode_key_offset));
+        window.ede.curEpOffset = Number.isFinite(savedOffset) ? savedOffset : 0;
+
         if (is_auto) {
             //优先使用记忆设置
             if (window.localStorage.getItem(_episode_key)) {
@@ -1778,11 +1409,6 @@
                 return null;
             }
         }
-        const _episode_key_offset = _episode_key + '_offset';
-        if (window.ede.curEpOffsetModified) {
-            window.localStorage.setItem(_episode_key_offset, window.ede.curEpOffset);
-        }
-        window.ede.curEpOffset = window.localStorage.getItem(_episode_key_offset) || 0;
 
         let searchUrl = getApiPrefix() + '/api/v2/search/episodes?anime=' + animeName;
         let animaInfo = await makeGetRequest(searchUrl)
@@ -1791,9 +1417,9 @@
                 showDebugInfo(`查询失败: ${error.message}`);
                 return null;
             });
-        if (animaInfo.animes.length == 0) {
-            const seriesInfo = await ApiClient.getItem(ApiClient.getCurrentUserId(), item.SeriesId || item.Id);
-            animeName = seriesInfo.OriginalTitle;
+        if (!animaInfo?.animes?.length) {
+            const seriesInfo = await ApiClient.getItem(ApiClient.getCurrentUserId(), item.SeriesId || item.Id).catch(() => null);
+            animeName = seriesInfo?.OriginalTitle;
             if (animeName?.length > 0) {
                 searchUrl = getApiPrefix() + '/api/v2/search/episodes?anime=' + animeName;
                 animaInfo = await makeGetRequest(searchUrl)
@@ -1804,7 +1430,7 @@
                     });
             }
         }
-        if (animaInfo.animes.length == 0) {
+        if (!animaInfo?.animes?.length) {
             showDebugInfo('弹幕查询无结果');
             return null;
         }
@@ -1835,9 +1461,6 @@
 
             window.localStorage.setItem(_id_key, animaInfo.animes[selecAnime_id].animeId);
             window.localStorage.setItem(_name_key, animaInfo.animes[selecAnime_id].animeTitle);
-
-            // Upstream debug string; unused by the current select dialog UI.
-            // const episode_lists_str = ep2string(animaInfo.animes[selecAnime_id].episodes);
 
             // 创建剧集选项数组
             const episodeOptions = animaInfo.animes[selecAnime_id].episodes.map((ep) => {
@@ -1985,10 +1608,17 @@
             const comments = [];
 
             for (const comment of data.getElementsByTagName('d')) {
-                const p = comment.getAttribute('p').split(',').map(Number);
+                const p = comment.getAttribute('p')?.split(',') || [];
+                const time = parseFloat(p[0]);
+                const mode = parseInt(p[1], 10);
+                const color = parseInt(p[3], 10);
+                if (!Number.isFinite(time) || !Number.isFinite(mode) || !Number.isFinite(color)) {
+                    continue;
+                }
+
                 const commentData = {
-                    cid: p[7],
-                    p: p[0] + ',' + p[1] + ',' + p[3] + ',' + p[6],
+                    cid: p[7] || '',
+                    p: time + ',' + mode + ',' + color + ',' + (p[6] || ''),
                     m: comment.textContent,
                 };
                 comments.push(commentData);
@@ -2001,41 +1631,6 @@
     }
 
     async function createDanmaku(comments) {
-        /*
-         * Upstream DOM-churn reload path. Desktop now reloads from the native
-         * item-change event, which avoids watching player container add/remove
-         * cycles for normal playback.
-        if (!window.obVideo) {
-            window.obVideo = new MutationObserver((mutationList, _observer) => {
-                for (let mutationRecord of mutationList) {
-                    if (mutationRecord.removedNodes) {
-                        for (let removedNode of mutationRecord.removedNodes) {
-                            if (removedNode.className && removedNode.classList.contains('videoPlayerContainer')) {
-                                console.log('[Jellyfin-Danmaku] Video Removed');
-                                window.ede.loading = false;
-                                document.getElementById('danmakuInfoTitle')?.remove();
-                                const wrapper = document.getElementById('danmakuWrapper');
-                                if (wrapper) wrapper.style.display = 'none';
-                                return;
-                            }
-                        }
-                    }
-                    if (mutationRecord.addedNodes) {
-                        for (let addedNode of mutationRecord.addedNodes) {
-                            if (addedNode.className && addedNode.classList.contains('videoPlayerContainer')) {
-                                console.log('[Jellyfin-Danmaku] Video Added');
-                                reloadDanmaku('refresh');
-                                return;
-                            }
-                        }
-                    }
-                }
-            });
-
-            window.obVideo.observe(document.body, { childList: true });
-        }
-         */
-
         if (!comments) {
             showDebugInfo('无弹幕');
             return;
@@ -2048,6 +1643,10 @@
             window.ede.danmaku.clear();
             window.ede.danmaku.destroy();
             window.ede.danmaku = null;
+        }
+        if (window.ede.obResize) {
+            window.ede.obResize.disconnect();
+            window.ede.obResize = null;
         }
 
         const waitForMediaContainer = async () => {
@@ -2133,32 +1732,8 @@
             });
         };
 
-        if (window.ede.obResize) {
-            window.ede.obResize.disconnect();
-        }
-
         window.ede.obResize = new ResizeObserver(resizeObserverCallback);
         window.ede.obResize.observe(_container);
-
-        /*
-         * Upstream media-attribute observer. It can schedule reloads on generic
-         * attribute changes; desktop item-change events are a cleaner trigger.
-        const mutationObserverCallback = () => {
-            if (window.ede.danmaku && document.querySelector(mediaQueryStr)) {
-                showDebugInfo('探测播放媒体变化');
-                document.getElementById('danmakuInfoTitle')?.remove();
-                const sleep = new Promise((resolve) => setTimeout(resolve, 3000));
-                sleep.then(() => reloadDanmaku('refresh'));
-            }
-        };
-
-        if (window.ede.obMutation) {
-            window.ede.obMutation.disconnect();
-        }
-
-        window.ede.obMutation = new MutationObserver(mutationObserverCallback);
-        window.ede.obMutation.observe(_media, { attributes: true });
-         */
     }
 
     function displayDanmakuInfo(info) {
@@ -2175,105 +1750,82 @@
         infoContainer.innerText = `弹幕匹配信息：${info.animeTitle} - ${info.episodeTitle}`;
     }
 
-    function reloadDanmaku(type = 'check') {
+    function markDanmakuControlReady() {
+        const danmakuCtr = document.getElementById('danmakuCtr');
+        if (danmakuCtr && danmakuCtr.style && danmakuCtr.style.opacity !== '1') {
+            danmakuCtr.style.opacity = 1;
+        }
+    }
+
+    async function reloadDanmaku(type = 'check') {
         if (window.ede.loading) {
             showDebugInfo('正在重新加载');
             return;
         }
         window.ede.loading = true;
-        if (window.ede.useXmlDanmaku === 1) {
-            getItemId()
-                .then((itemId) => {
-                    return new Promise((resolve, reject) => {
-                        if (!itemId) {
-                            if (type != 'init') {
-                                reject('播放器未完成加载');
-                            } else {
-                                reject(null);
-                            }
-                        }
-                        resolve(itemId);
-                    });
-                })
-                .then((jellyfinItemId) =>
-                    getCommentsByPluginApi(jellyfinItemId).then((comments) => ({
-                        jellyfinItemId,
-                        comments,
-                    })),
-                )
-                .then(({ jellyfinItemId, comments }) => {
+
+        try {
+            if (window.ede.useXmlDanmaku === 1) {
+                try {
+                    const jellyfinItemId = await getItemId();
+                    if (!jellyfinItemId) {
+                        if (type !== 'init') showDebugInfo('播放器未完成加载');
+                        await loadOnlineDanmaku(type);
+                        return;
+                    }
+
+                    const comments = await getCommentsByPluginApi(jellyfinItemId);
                     if (comments?.length > 0) {
                         setCommentCache(`plugin:${jellyfinItemId}`, comments);
-                        return createDanmaku(comments)
-                            .then(() => {
-                                showDebugInfo('本地弹幕就位');
-                            })
-                            .then(() => {
-                                window.ede.loading = false;
-                                const danmakuCtr = document.getElementById('danmakuCtr');
-                                if (danmakuCtr && danmakuCtr.style && danmakuCtr.style.opacity !== '1') {
-                                    danmakuCtr.style.opacity = 1;
-                                }
-                            });
+                        await createDanmaku(comments);
+                        showDebugInfo('本地弹幕就位');
+                        return;
                     }
+
                     throw new Error('本地弹幕加载失败，尝试在线加载');
-                })
-                .catch((error) => {
+                } catch (error) {
                     showDebugInfo(error?.message || error);
-                    return loadOnlineDanmaku(type);
-                });
-        } else {
-            loadOnlineDanmaku(type);
+                    await loadOnlineDanmaku(type);
+                }
+            } else {
+                await loadOnlineDanmaku(type);
+            }
+        } catch (error) {
+            if (error) showDebugInfo(error?.message || error);
+        } finally {
+            window.ede.loading = false;
+            markDanmakuControlReady();
         }
     }
 
-    function loadOnlineDanmaku(type) {
-        return getEpisodeInfo(type != 'search')
-            .then((info) => {
-                return new Promise((resolve, reject) => {
-                    if (!info) {
-                        if (type != 'init') {
-                            reject('播放器未完成加载');
-                        } else {
-                            reject(null);
-                        }
-                        return;
-                    }
-                    if (type != 'search' && type != 'reload' && window.ede.danmaku && window.ede.episode_info && window.ede.episode_info.episodeId == info.episodeId) {
-                        reject('当前播放视频未变动');
-                        return;
-                    } else {
-                        window.ede.episode_info = info;
-                        displayDanmakuInfo(info);
-                        resolve(info.episodeId);
-                    }
-                });
-            })
-            .then(
-                (episodeId) =>
-                    getComments(episodeId).then((comments) => {
-                        setCommentCache(`online:${episodeId}`, comments);
-                        return createDanmaku(comments).then(() => {
-                            showDebugInfo('弹幕就位');
-                        });
-                    }),
-                (msg) => {
-                    if (msg) {
-                        showDebugInfo(msg);
-                    }
-                },
-            )
-            .then(() => {
-                window.ede.loading = false;
-                const danmakuCtr = document.getElementById('danmakuCtr');
-                if (danmakuCtr && danmakuCtr.style && danmakuCtr.style.opacity !== '1') {
-                    danmakuCtr.style.opacity = 1;
-                }
-            });
+    async function loadOnlineDanmaku(type) {
+        const info = await getEpisodeInfo(type !== 'search');
+        if (!info) {
+            if (type !== 'init') showDebugInfo('播放器未完成加载');
+            return;
+        }
+
+        if (type !== 'search' && type !== 'reload' && window.ede.danmaku && window.ede.episode_info && window.ede.episode_info.episodeId == info.episodeId) {
+            showDebugInfo('当前播放视频未变动');
+            return;
+        }
+
+        window.ede.episode_info = info;
+        displayDanmakuInfo(info);
+
+        const comments = await getComments(info.episodeId);
+        if (!comments) {
+            return;
+        }
+
+        setCommentCache(`online:${info.episodeId}`, comments);
+        await createDanmaku(comments);
+        showDebugInfo('弹幕就位');
     }
 
     function preProcessDanmaku(all_cmts, containerWidth, containerHeight) {
         const { fontSize, fontOptions, fontFamily, speed, heightRatio, danmakuFilter, danmakuModeFilter, danmakuDensityLimit, curEpOffset } = window.ede;
+        const offset = Number.isFinite(Number(curEpOffset)) ? Number(curEpOffset) : 0;
 
         // 来源过滤规则
         const disableBilibili = (danmakuFilter & 1) === 1;
@@ -2320,7 +1872,7 @@
             const parts = comment.p.split(',');
             const time = parseFloat(parts[0]);
             const modeId = parseInt(parts[1], 10);
-            const user = parts[3];
+            const user = parts[3] || '';
 
             // 来源过滤
             if (
@@ -2363,12 +1915,10 @@
             resultComments.push({
                 text: comment.m,
                 mode,
-                time: time + curEpOffset,
+                time: time + offset,
                 style: {
                     font: `${fontOptions} ${fontSize}px ${fontFamily}`,
                     fillStyle: `#${color}`,
-                    // Temporary visual test: omit strokeStyle so the bundled
-                    // renderer skips strokeText().
                     ...(disableTextStrokeForTest ? {} : {
                         strokeStyle: color === '000000' ? '#fff' : '#000',
                         lineWidth: 1.0,
@@ -2522,22 +2072,6 @@
         return anime_lists_str;
     }
 
-    /*
-     * Upstream debug helper for the old prompt-based episode picker. The
-     * current select dialog builds option arrays directly.
-    function ep2string($obj3) {
-        const $animes = $obj3;
-        let anime_lists = $animes.map(($single_ep) => {
-            return $single_ep.episodeTitle;
-        });
-        let ep_lists_str = '1:' + anime_lists[0];
-        for (let i = 1; i < anime_lists.length; i++) {
-            ep_lists_str = ep_lists_str + '\n' + (i + 1).toString() + ':' + anime_lists[i];
-        }
-        return ep_lists_str;
-    }
-     */
-
     const waitForElement = (selector, predicate = (element) => !!element) => {
         return new Promise((resolve) => {
             const findMatch = () => {
@@ -2613,6 +2147,10 @@
             window.ede.danmaku.destroy();
             window.ede.danmaku = null;
         }
+        if (window.ede.obResize) {
+            window.ede.obResize.disconnect();
+            window.ede.obResize = null;
+        }
     }
 
     function handleDesktopItemChanged(event) {
@@ -2680,8 +2218,6 @@
                 const fontFamily = window.getComputedStyle(materialIcon).fontFamily;
                 if (fontFamily === '"Font Awesome 6 Pro"') {
                     danmaku_icons = ['fa-comment-slash', 'fa-comment'];
-                    // log_icons = ['fa-toilet-paper-slash', 'fa-toilet-paper'];
-                    // sendDanmakuOpts.class = 'fa-paper-plane';
                 }
             }
 
