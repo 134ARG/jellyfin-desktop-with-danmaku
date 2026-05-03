@@ -2371,7 +2371,7 @@
                     // renderer skips strokeText().
                     ...(disableTextStrokeForTest ? {} : {
                         strokeStyle: color === '000000' ? '#fff' : '#000',
-                        lineWidth: 0.5,
+                        lineWidth: 1.0,
                     }),
                 },
             });
