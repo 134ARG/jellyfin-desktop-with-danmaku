@@ -52,6 +52,8 @@ const WEB_SCRIPTS: &[&str] = &[
     "native-shim.js",
     "mpv-player-base.js",
     "mpv-video-player.js",
+    "danmaku-desktop-adapter.js",
+    "ede.js",
     "mpv-audio-player.js",
     "input-plugin.js",
     "client-settings.js",
