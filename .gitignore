@@ -16,6 +16,9 @@ third_party/*
 .env.*
 !.env.example
 
+# macOS Finder metadata
+.DS_Store
+
 # Project-scoped MCP
 .mcp.json
 
