@@ -6,6 +6,7 @@ pub fn get(name: &str) -> Option<&'static str> {
         "mpv-player-base.js" => include_str!("../../web/mpv-player-base.js"),
         "mpv-video-player.js" => include_str!("../../web/mpv-video-player.js"),
         "danmaku-desktop-adapter.js" => include_str!("../../web/danmaku-desktop-adapter.js"),
+        "danmaku-api.js" => include_str!("../../web/danmaku/api.js"),
         "ede.js" => include_str!("../../web/danmaku/ede.js"),
         "mpv-audio-player.js" => include_str!("../../web/mpv-audio-player.js"),
         "input-plugin.js" => include_str!("../../web/input-plugin.js"),

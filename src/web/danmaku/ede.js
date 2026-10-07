@@ -36,8 +36,7 @@
         return;
     }
     // ------ configs start------
-    const corsProxy = 'https://ddplay-api.930524.xyz/cors/';
-    const apiPrefix = 'https://api.dandanplay.net';
+    const danmakuApi = window.createDesktopDanmakuApi(__DANMAKU_CONFIG_JSON__);
     const desktopItemChangedEvent = 'jellyfinDesktopDanmakuItemChanged';
     const maxCanvasDevicePixelRatio = 1.5;
     window.__JELLYFIN_DANMAKU_MAX_DPR = maxCanvasDevicePixelRatio;
@@ -156,10 +155,6 @@
             const fontOptions = window.localStorage.getItem('danmakuFontOptions');
             this.fontOptions = fontOptions ?? 'bold';
 
-            // 自定义CORS代理和API
-            this.customCorsProxy = window.localStorage.getItem('customCorsProxy') ?? '';
-            this.customApiPrefix = window.localStorage.getItem('customApiPrefix') ?? '';
-
             this.danmaku = null;
             this.episode_info = null;
             this.activeItemId = null;
@@ -217,8 +212,6 @@
                 chConvert: window.ede.chConvert,
                 danmakuFilter: window.ede.danmakuFilter,
                 useXmlDanmaku: window.ede.useXmlDanmaku,
-                customCorsProxy: window.ede.customCorsProxy,
-                customApiPrefix: window.ede.customApiPrefix,
             };
 
             window.ede.opacity = parseFloatOfRange(document.getElementById('opacity').value, 0, 1);
@@ -270,19 +263,10 @@
             window.localStorage.setItem('danmakuFontOptions', window.ede.fontOptions);
             showDebugInfo(`字体选项：${window.ede.fontOptions}`);
 
-            window.ede.customCorsProxy = document.getElementById('customCorsProxy').value;
-            window.localStorage.setItem('customCorsProxy', window.ede.customCorsProxy);
-            showDebugInfo(`自定义CORS代理：${window.ede.customCorsProxy}`);
-            window.ede.customApiPrefix = document.getElementById('customApiPrefix').value;
-            window.localStorage.setItem('customApiPrefix', window.ede.customApiPrefix);
-            showDebugInfo(`自定义API：${window.ede.customApiPrefix}`);
-
             const needsRefetch =
                 reloadSettings.chConvert !== window.ede.chConvert ||
                 reloadSettings.danmakuFilter !== window.ede.danmakuFilter ||
-                reloadSettings.useXmlDanmaku !== window.ede.useXmlDanmaku ||
-                reloadSettings.customCorsProxy !== window.ede.customCorsProxy ||
-                reloadSettings.customApiPrefix !== window.ede.customApiPrefix;
+                reloadSettings.useXmlDanmaku !== window.ede.useXmlDanmaku;
 
             if (needsRefetch || !rebuildDanmakuFromCache('settings')) {
                 reloadDanmaku('reload');
@@ -294,9 +278,7 @@
     }
 
     function getApiPrefix() {
-        const cors = window.ede.customCorsProxy.length > 7 ? window.ede.customCorsProxy : corsProxy;
-        const api = window.ede.customApiPrefix.length > 7 ? window.ede.customApiPrefix : cors + apiPrefix;
-        return api;
+        return danmakuApi.getApiPrefix();
     }
 
     // 创建弹幕设置侧边栏
@@ -1064,36 +1046,6 @@
             controlItems.push(addSourceItem);
         }
 
-        // 添加自定义cors代理和API选项
-        {
-            const customCorsProxy = document.createElement('div');
-            customCorsProxy.className = 'controlItem controlCard customCorsProxyCard';
-
-            customCorsProxy.innerHTML = `
-            <div class="controlInfo">
-                <div class="controlText">
-                    <div class="controlTitle" >配置第三方弹幕库，如御坂网络</div>
-                </div>
-            </div>
-            <div class="custom-input-group">
-                <label for="customCorsProxy" class="custom-input-label">CORS代理:</label>
-                <input id="customCorsProxy" 
-                       class="custom-input-field" 
-                       placeholder="自定义CORS代理，留空使用默认" 
-                       value="${window.ede.customCorsProxy ?? ''}" />
-            </div>
-            <div class="custom-input-group">
-                <label for="customApiPrefix" class="custom-input-label">API:</label>
-                <input id="customApiPrefix" 
-                       class="custom-input-field" 
-                       placeholder="自定义API，留空使用默认" 
-                       value="${window.ede.customApiPrefix ?? ''}" />
-            </div>
-            `;
-
-            controlItems.push(customCorsProxy);
-        }
-
         return controlItems.length > 0 ? controlItems : null;
     }
 
@@ -1354,14 +1306,7 @@
     }
 
     function makeGetRequest(url) {
-        return fetch(url, {
-            method: 'GET',
-            headers: {
-                'Accept-Encoding': 'gzip,br',
-                Accept: 'application/json',
-                'User-Agent': navigator.userAgent,
-            },
-        });
+        return danmakuApi.get(url);
     }
 
     async function getEpisodeInfo(is_auto = true) {
@@ -1410,7 +1355,7 @@
             }
         }
 
-        let searchUrl = getApiPrefix() + '/api/v2/search/episodes?anime=' + animeName;
+        let searchUrl = getApiPrefix() + '/api/v2/search/episodes?anime=' + encodeURIComponent(animeName);
         let animaInfo = await makeGetRequest(searchUrl)
             .then((response) => response.json())
             .catch((error) => {
@@ -1421,7 +1366,7 @@
             const seriesInfo = await ApiClient.getItem(ApiClient.getCurrentUserId(), item.SeriesId || item.Id).catch(() => null);
             animeName = seriesInfo?.OriginalTitle;
             if (animeName?.length > 0) {
-                searchUrl = getApiPrefix() + '/api/v2/search/episodes?anime=' + animeName;
+                searchUrl = getApiPrefix() + '/api/v2/search/episodes?anime=' + encodeURIComponent(animeName);
                 animaInfo = await makeGetRequest(searchUrl)
                     .then((response) => response.json())
                     .catch((error) => {
@@ -2748,7 +2693,6 @@
         .settingItem,
         .controlItem,
         .controlCard,
-        .customCorsProxyCard,
         .danmakuSwitchCard,
         .logSwitchCard,
         .searchItemCard,
@@ -2805,7 +2749,6 @@
         .controlTitle,
         .settingLabel,
         .settings-flex-auto,
-        .custom-input-label,
         .checkbox-item-label {
             color: var(--danmaku-jf-text) !important;
             font-size: 13px !important;
@@ -2889,7 +2832,6 @@
         input#danmakuOffsetTime,
         input#danmakuFontOptions,
         input#dialogInput,
-        .custom-input-field,
         .styledTextInput,
         [id*="danmaku"] input[type="text"],
         [id*="danmaku"] input[type="number"] {
@@ -2916,7 +2858,6 @@
         input#danmakuOffsetTime:focus,
         input#danmakuFontOptions:focus,
         input#dialogInput:focus,
-        .custom-input-field:focus,
         .styledTextInput:focus {
             border-color: var(--danmaku-jf-accent) !important;
             background: #181818 !important;
@@ -3165,25 +3106,6 @@
         .modernSlider:hover,
         .modernSwitch input:checked + .modernSlider:hover {
             box-shadow: none !important;
-        }
-
-        .customCorsProxyCard {
-            flex-direction: column !important;
-            gap: 10px !important;
-            align-items: stretch !important;
-        }
-
-        .custom-input-group {
-            display: flex !important;
-            align-items: center !important;
-            width: 100% !important;
-            margin: 0 !important;
-            gap: 8px !important;
-        }
-
-        .custom-input-label {
-            width: 72px !important;
-            flex: 0 0 72px !important;
         }
 
         .dialogOverlay {

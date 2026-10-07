@@ -633,6 +633,11 @@ fn run_user_scripts(profile: &ExtraInfo, frame: &Frame) {
 
     let url_uf = frame.url();
     let url = CefString::from(&url_uf);
+    replace_first(
+        &mut code,
+        "__DANMAKU_CONFIG_JSON__",
+        profile.danmaku_config_json(),
+    );
     let code_cef = CefString::from(code.as_str());
     frame.execute_java_script(Some(&code_cef), Some(&url), 0);
 }

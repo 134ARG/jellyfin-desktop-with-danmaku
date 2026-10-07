@@ -9,6 +9,8 @@ name = "jfn_config"
 crate-type = ["rlib"]
 
 [dependencies]
+dotenvy = "0.15.7"
+jfn-js-json = { path = "../js_json" }
 jfn-mailbox = { path = "../mailbox" }
 jfn-paths = { path = "../paths" }
 jfn-platform-abi = { path = "../platform_abi" }
@@ -19,6 +21,9 @@ serde_json.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 gethostname.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

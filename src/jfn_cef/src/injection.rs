@@ -131,6 +131,7 @@ pub(crate) enum InjectedScript {
     NativeShim,
     MpvPlayerBase,
     MpvVideoPlayer,
+    DanmakuApi,
     DanmakuDesktopAdapter,
     Danmaku,
     MpvAudioPlayer,
@@ -144,6 +145,7 @@ impl InjectedScript {
             "native-shim.js" => Self::NativeShim,
             "mpv-player-base.js" => Self::MpvPlayerBase,
             "mpv-video-player.js" => Self::MpvVideoPlayer,
+            "danmaku-api.js" => Self::DanmakuApi,
             "danmaku-desktop-adapter.js" => Self::DanmakuDesktopAdapter,
             "ede.js" => Self::Danmaku,
             "mpv-audio-player.js" => Self::MpvAudioPlayer,
@@ -158,6 +160,7 @@ impl InjectedScript {
             Self::NativeShim => "native-shim.js",
             Self::MpvPlayerBase => "mpv-player-base.js",
             Self::MpvVideoPlayer => "mpv-video-player.js",
+            Self::DanmakuApi => "danmaku-api.js",
             Self::DanmakuDesktopAdapter => "danmaku-desktop-adapter.js",
             Self::Danmaku => "ede.js",
             Self::MpvAudioPlayer => "mpv-audio-player.js",
@@ -211,6 +214,7 @@ const WEB_SCRIPTS: &[InjectedScript] = &[
     InjectedScript::NativeShim,
     InjectedScript::MpvPlayerBase,
     InjectedScript::MpvVideoPlayer,
+    InjectedScript::DanmakuApi,
     InjectedScript::DanmakuDesktopAdapter,
     InjectedScript::Danmaku,
     InjectedScript::MpvAudioPlayer,
@@ -218,6 +222,7 @@ const WEB_SCRIPTS: &[InjectedScript] = &[
 ];
 const FUNCTIONS_KEY: &str = "functions";
 const SCRIPTS_KEY: &str = "scripts";
+const DANMAKU_CONFIG_JSON_KEY: &str = "danmaku_config_json";
 const DEVICE_PROFILE_JSON_KEY: &str = "device_profile_json";
 const SHARED_TEXTURES_ENABLED_KEY: &str = "shared_textures_enabled";
 const WINDOW_DECORATIONS_KEY: &str = "window_decorations";
@@ -225,11 +230,13 @@ const WINDOW_DECORATION_OPTIONS_KEY: &str = "window_decoration_options";
 
 static DEVICE_PROFILE_JSON: OnceLock<String> = OnceLock::new();
 
-#[derive(Clone, Debug)]
+// Credentials in this payload must never be included in debug output.
+#[derive(Clone)]
 pub(crate) struct ExtraInfo {
     functions: Vec<NativeFunction>,
     scripts: Vec<InjectedScript>,
     device_profile_json: Option<String>,
+    danmaku_config_json: Option<String>,
     shared_textures_enabled: bool,
     window_decorations: Option<WindowDecorations>,
     /// Decoration modes the user may choose between; empty when the setting
@@ -243,6 +250,7 @@ impl ExtraInfo {
             functions: read_native_functions(&dict),
             scripts: read_injected_scripts(&dict),
             device_profile_json: read_string(&dict, DEVICE_PROFILE_JSON_KEY),
+            danmaku_config_json: read_string(&dict, DANMAKU_CONFIG_JSON_KEY),
             shared_textures_enabled: read_bool(&dict, SHARED_TEXTURES_ENABLED_KEY),
             window_decorations: read_string(&dict, WINDOW_DECORATIONS_KEY)
                 .as_deref()
@@ -274,6 +282,12 @@ impl ExtraInfo {
                 Some(&CefString::from(json.as_str())),
             );
         }
+        if let Some(json) = self.danmaku_config_json {
+            dict.set_string(
+                Some(&CefString::from(DANMAKU_CONFIG_JSON_KEY)),
+                Some(&CefString::from(json.as_str())),
+            );
+        }
         if let Some(wd) = self.window_decorations {
             dict.set_string(
                 Some(&CefString::from(WINDOW_DECORATIONS_KEY)),
@@ -293,6 +307,10 @@ impl ExtraInfo {
 
     pub(crate) fn device_profile_json(&self) -> Option<&str> {
         self.device_profile_json.as_deref()
+    }
+
+    pub(crate) fn danmaku_config_json(&self) -> &str {
+        self.danmaku_config_json.as_deref().unwrap_or("{}")
     }
 
     pub(crate) fn shared_textures_enabled(&self) -> bool {
@@ -391,6 +409,11 @@ pub(crate) fn build_web(shared_textures_enabled: bool) -> ExtraInfo {
         functions: WEB_FUNCTIONS.to_vec(),
         scripts: WEB_SCRIPTS.to_vec(),
         device_profile_json: None,
+        danmaku_config_json: Some(jfn_config::danmaku::load_json(
+            std::env::var_os("JFN_DANMAKU_ENV").map(std::path::PathBuf::from),
+            &std::env::current_dir().unwrap_or_default(),
+            &jfn_paths::config_dir(),
+        )),
         shared_textures_enabled,
         window_decorations: jfn_config::configured_window_decorations(),
         window_decoration_options: Vec::new(),
@@ -416,7 +439,30 @@ pub(crate) fn build_web(shared_textures_enabled: bool) -> ExtraInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::{NativeFunction, WEB_FUNCTIONS};
+    use super::{InjectedScript, NativeFunction, WEB_FUNCTIONS, WEB_SCRIPTS};
+
+    #[test]
+    fn danmaku_scripts_survive_renderer_registration_in_dependency_order() {
+        let scripts: Vec<_> = WEB_SCRIPTS
+            .iter()
+            .filter_map(|script| InjectedScript::from_name(script.file_name()))
+            .collect();
+        assert_eq!(scripts.as_slice(), WEB_SCRIPTS);
+        let index = |script| {
+            scripts
+                .iter()
+                .position(|candidate| *candidate == script)
+                .unwrap()
+        };
+        assert!(
+            index(InjectedScript::MpvVideoPlayer) < index(InjectedScript::DanmakuDesktopAdapter)
+        );
+        assert!(index(InjectedScript::DanmakuApi) < index(InjectedScript::Danmaku));
+        assert!(index(InjectedScript::DanmakuDesktopAdapter) < index(InjectedScript::Danmaku));
+        for script in scripts {
+            assert!(crate::embedded_js::get(script.file_name()).is_some());
+        }
+    }
 
     #[test]
     fn web_profile_has_native_settings_opener() {
